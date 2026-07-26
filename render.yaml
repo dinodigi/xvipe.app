@@ -1,0 +1,48 @@
+# Render blueprint — deploys the XVibe studio as one web service.
+#
+# New → Blueprint in the Render dashboard, point it at this repo, and Render
+# creates the service + persistent disk and prompts for the secret env vars.
+#
+# The persistent disk holds .xvibe state (app workspaces, delivery-token
+# custody, transcripts) — Render's filesystem is ephemeral without it.
+# XVibe's own operational data moves into a Pluggie project in Phase 2.
+services:
+  - type: web
+    name: xvibe-studio
+    runtime: node
+    plan: starter # persistent disks require a paid instance
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    healthCheckPath: /unlock
+    autoDeploy: true
+    disk:
+      name: xvibe-state
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: 22.12.0
+      - key: XVIBE_STATE_DIR
+        value: /var/data/xvibe
+      - key: PLUGGIE_MCP_URL
+        value: https://pluggie.app/api/mcp
+      - key: PLUGGIE_DELIVERY_BASE
+        value: https://pluggie.app/api/v1
+      - key: BUILDER_MODEL
+        value: claude-haiku-4-5
+      # Secrets + deployment-specific values — Render prompts for these:
+      - key: PLUGGIE_MCP_TOKEN
+        sync: false
+      - key: PLUGGIE_PROJECT_ID
+        sync: false
+      - key: PLUGGIE_PROJECT_NAME
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Gate the studio — builds spend the API key. Pick any strong passphrase.
+      - key: STUDIO_ACCESS_KEY
+        sync: false
+      # Wildcard apps domain pointed at this service (e.g. apps.xvipe.app,
+      # serving *.apps.xvipe.app). Set after DNS is configured.
+      - key: XVIBE_APPS_BASE_DOMAIN
+        sync: false
