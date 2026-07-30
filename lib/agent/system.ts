@@ -15,6 +15,26 @@ export function buildSystemPrompt(app: AppMeta, info: ProjectInfo): string {
     ? `Briefing attention items (verify before relying on the affected connector):\n${info.briefing.attention.map((a) => `- ${a}`).join("\n")}`
     : "Briefing: no attention items.";
 
+  // End-user auth recipe, derived from the live connector. Clerk publishable
+  // keys encode the frontend-API host (base64 of "<host>$").
+  const issuerHost = info.endUserAuth?.issuer?.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  const publishableKey = issuerHost
+    ? `${issuerHost.endsWith("accounts.dev") ? "pk_test_" : "pk_live_"}${Buffer.from(`${issuerHost}$`).toString("base64")}`
+    : undefined;
+  const authSection = issuerHost
+    ? `# End-user auth (Clerk — the ONLY way to do sign-in)
+NEVER build credential machinery in collections: no users-with-passwords, no sessions, no password_resets, no tokens. Credentials live in Clerk; Pluggie collections may hold PROFILE data keyed by the Clerk user id at most.
+Recipe for a static app with sign-in:
+1. Load Clerk's browser SDK from the project's own Clerk instance (this is the sanctioned exception to the no-CDN rule):
+   <script src="https://${issuerHost}/npm/@clerk/clerk-js@5/dist/clerk.browser.js" data-clerk-publishable-key="${publishableKey}"></script>
+   then: await Clerk.load(); if (!Clerk.user) Clerk.mountSignIn(el) — sign-up works out of the box.
+2. Authenticated calls: const jwt = await Clerk.session.getToken(); then fetch("/api/v1/…", { headers: { "X-User-Token": jwt } }). getToken() refreshes itself — call it per request, never cache in storage.
+3. Enforcement is the collection's access presets: read/write "authenticated", or "owner" + ownerField (server-stamped from the JWT — never client-set). The UI only HIDES things; Pluggie enforces them.
+4. Role gating ({claim:"role",equals:"staff"}) needs operator-side Clerk token customization that may not be configured — for demos default to "authenticated" and say so; mention the role upgrade path in your summary.
+Sign-out: Clerk.signOut(). Show the signed-in user via Clerk.user.
+`
+    : `# End-user auth: NOT configured on this project — do not build sign-in flows; say so if asked.\n`;
+
   return `You are the XVibe builder agent. A person describes an app in chat; you build it — backend on Pluggie, frontend as a static bundle — and it ships to a live URL. You are working on the app "${app.name}" (slug: ${app.slug}) inside the Pluggie project "${projectName}".
 
 # The two surfaces (never mix them)
@@ -55,6 +75,7 @@ subscriptions for app users (one-time checkout only) · SMS · third-party API c
 - Delivery API shapes: GET /api/v1/<collection> returns publicRead fields only; filters ?field=value, sort ?sort=field:asc, paging ?limit=&offset=, search ?q=. POST /api/v1/<collection> for publicWrite forms. PATCH/DELETE /api/v1/<collection>/<id> under owner/claim rules with X-User-Token. Poll GET /api/v1/changes?since=<cursor> for near-realtime.
 - Delivery reads converge ~15s after your MCP writes — after seeding, the preview may briefly show fewer rows; say so instead of "fixing" it.
 
+${authSection}
 # Working style
 - Errors carry stable E_* codes and state their own fix — read them, repair, continue. E_CONFIRM_REQUIRED means a destructive plan came back: tell the user what it will do in one sentence, then re-send with confirm:true only if their request clearly implies it.
 - Rate limit: 300 tool calls/min/project. Batch content into bulk_create_entries.
