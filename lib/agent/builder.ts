@@ -70,7 +70,7 @@ export async function* runBuilder(slug: string, userMessage: string): AsyncGener
   const [info, tools] = await Promise.all([getProjectInfo(mcpToken), getAgentTools(mcpToken)]);
   const system = buildSystemPrompt(app, info);
 
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY.trim() });
   let messages = [...(loadConversation(slug) as MessageParam[]), { role: "user" as const, content: userMessage }];
   appendTranscript(slug, { kind: "user", text: userMessage });
 

@@ -11,8 +11,12 @@
  */
 
 export function getPluggieToken(projectId: string): string {
-  const configuredId = process.env.PLUGGIE_PROJECT_ID;
-  const token = process.env.PLUGGIE_MCP_TOKEN;
+  // .trim() everywhere: env values pasted into hosting dashboards routinely
+  // carry trailing whitespace/newlines, and a strict compare then fails in a
+  // way that looks like a wrong id.
+  const configuredId = process.env.PLUGGIE_PROJECT_ID?.trim();
+  const token = process.env.PLUGGIE_MCP_TOKEN?.trim();
+  projectId = projectId.trim();
 
   if (!token) {
     throw new Error(
@@ -32,5 +36,5 @@ export function getPluggieToken(projectId: string): string {
 
 /** The one project this dev environment can open (drives the Phase-1 door). */
 export function getDevProjectId(): string | undefined {
-  return process.env.PLUGGIE_PROJECT_ID;
+  return process.env.PLUGGIE_PROJECT_ID?.trim();
 }
