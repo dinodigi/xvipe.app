@@ -1,0 +1,108 @@
+# Agent-strength plan — closing the gap with Claude Code, then removing limits
+
+> Written 2026-07-30 from operator direction: (1) the builder errs far more
+> than Claude Code + Pluggie MCP does; (2) Replit-style task planning on a
+> copy of the app + a strong PRD builder are wanted; (3) "no limits on what
+> you can build" is now the goal — full hosting acceptable if required.
+
+## 0. Root-cause: why Claude Code beats our builder today
+
+| Factor | Claude Code desktop | XVibe builder today | Weight |
+|---|---|---|---|
+| Model | Opus/Fable-class (subscription) | Haiku 4.5 (cost guard) | ~half the gap |
+| Harness | Years of engineering: verification loops, read-before-edit, planning, subagents, retries | 200-line loop, no verification | ~the other half |
+| Feedback | Sees results: runs code, reads errors, iterates | Builds blind — never loads the app, no lint, no render check | large |
+| Context | CLAUDE.md + memory + huge context | contract (good, growing) + transcript | small |
+
+The platform is NOT the weak link — Pluggie's self-repairing errors fixed the
+agent's own mistakes repeatedly in testing. The loop around the model is.
+
+## 1. P0 — this week (biggest lift per line of code)
+
+1. **Model policy: quality tiers.** Full builds default `claude-sonnet-5`;
+   small edits stay Haiku; per-app override in the studio ("quality mode").
+   With caching, a Sonnet build ≈ $0.60–1.50 — 3× Haiku, 10× less than Fable.
+   Single biggest error reducer available today.
+2. **Sight: static verification the agent must pass.** After every
+   `write_app_file`: JS parse check (esbuild), HTML sanity, and an
+   **API-lint** — every `fetch("/api/v1/<x>")` in the bundle must reference a
+   collection that exists, with `publicRead` fields matching what the code
+   reads. Failures return to the agent as tool errors (same self-repair loop
+   the platform uses).
+3. **Delivery smoke test tool.** A builder-callable `probe_app` tool: server-
+   side GETs of the endpoints the app uses (with the app's real token) so
+   projection/access misconfigurations (the empty-dashboard class) surface
+   during the build, not after.
+4. **Reviewer pass (task #9 vehicle).** Fresh-context cheap agent after each
+   build: checklist = no server code, no credential collections, publicRead
+   on gated fields, schedules created where promised, honest not-yet answers.
+   One repair round on failure. (~$0.02/build.)
+5. **Eval harness v1.** 10–15 golden prompts run on demand against the burn
+   sandbox with mechanical assertions. Run on every contract change. This is
+   our substitute for "training on our tools."
+
+## 2. P1 — the structural fix: Claude Agent SDK spike
+
+Replace the hand-rolled loop with the **Claude Agent SDK** (Claude Code as a
+library): its loop, context management, planning, subagents and hooks —
+running server-side in XVibe, on our key, with:
+- **Pluggie via MCP directly** (it already IS an MCP server) — schemas stay
+  live; the contract becomes the agent's CLAUDE.md-equivalent.
+- **Workspace + custody as custom tools/hooks** — keep the delivery-token
+  interception and the write guards; deny-by-default permissions (no bash).
+- Spike goal: one golden task end-to-end on Render; compare error rate and
+  cost vs. the current loop before committing.
+
+This is the honest answer to "Claude Code works better": stop imitating the
+harness, embed it.
+
+## 3. P2 — plan-first building (the Replit-style ask)
+
+1. **Plan tool (PRD builder).** A planning pass that turns a prompt into
+   `PRD.md` + a task list (stored per app, shown as a studio tool). Building
+   executes tasks one at a time; each task = its own chat turn + checkpoint.
+2. **Checkpoints = extend Deploys.** Before each task: automatic workspace
+   snapshot (same machinery as publish versions). Task went wrong → one-click
+   restore. This is "work on a copy" for the frontend, shippable now.
+3. **Backend branching (the hard half).** Pluggie collections are live —
+   there is no schema sandbox. Near-term: schema changes in plan mode run as
+   **dry-runs first** (define_collection plans + transact dryRun) and the
+   diff is shown for approval before execution. Real fix: **file on the wall
+   — project branches backed by Neon branching** (Neon supports DB branches
+   natively; Pluggie sits on Neon). Branch project → task runs against the
+   branch → merge = replay defines. That single platform feature makes
+   XVibe's task system fully Replit-grade.
+
+## 4. P3 — no limits (the compute ladder, now committed)
+
+Goal accepted: nothing buildable should be off the table. Sequence that gets
+there without ever OWNING a runtime:
+1. **Connectors** (filed on the wall) — secret-custody proxying: AI features,
+   Twilio-class integrations in static apps. No tenant code execution.
+2. **Functions on rented isolates — commit, don't defer.** Agent writes
+   `functions/*` → XVibe deploys to **Cloudflare Workers for Platforms**
+   (dispatch namespaces: per-tenant isolation, we meter, CF sandboxes).
+   Static frontend + Pluggie data + per-app functions ≈ full-stack parity
+   with Bolt/Lovable for the 95% case. XVibe owns this layer; Pluggie stays
+   compute-free forever.
+3. **Containers only if Workers prove insufficient** (long-running
+   processes, arbitrary runtimes) — rented again (Cloudflare Containers /
+   Fly-class), decided on evidence, not upfront.
+4. **Non-negotiable gates before 2 ships publicly** (from the plan, now
+   scheduled work, not vetoes): abuse kill-switch (task #12), hard per-app
+   cost caps, takedown/report path, support runbook.
+
+## 5. What we deliberately do NOT do
+
+- No model fine-tuning now: frontier models aren't tunable by us, weights
+  freeze faster than the platform changes, and our defect class is context,
+  not capability. Keep logging trajectories (already automatic) — that corpus
+  is the future distillation asset if scale ever justifies a custom model.
+- No agent committees for building: one strong builder + one fresh-context
+  reviewer beats a schema-agent/UI-agent bureaucracy at this scale.
+
+## 6. Order of execution
+
+P0.1 model tiers → P0.2/3 sight+probe → P0.4 reviewer → P0.5 evals →
+P1 SDK spike (go/no-go) → P2 plan+checkpoints+PRD → wall: Neon branches →
+P3.2 Workers functions (+ #12 gates) → reassess containers.
