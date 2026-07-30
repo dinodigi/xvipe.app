@@ -24,34 +24,75 @@ import {
   wsWrite,
 } from "@/lib/apps/store";
 
-/** Pluggie tools the builder may call — authoring essentials only. */
+/**
+ * Pluggie tools the builder may call — the full authoring envelope minus
+ * destructive/ops-only verbs (purge, export/import, plugin authoring, token
+ * revocation stay human-only). Widened 2026-07-30 per docs/GAP-MAP.md §1:
+ * the platform did schedules, CAS, transactions, aggregations, inbound email
+ * and version-restore all along — the agent just couldn't reach them.
+ */
 const PLUGGIE_ALLOWLIST = new Set([
+  // orientation
   "get_project_info",
   "list_field_types",
+  "list_connectors",
+  // schema
   "list_collections",
   "describe_collection",
   "define_collection",
   "delete_collection",
   "define_block",
   "list_blocks",
+  "delete_block",
+  "set_locales",
+  // writes
   "create_entry",
   "bulk_create_entries",
   "update_entry",
+  "update_entry_if",
+  "transact",
   "delete_entry",
+  // reads
   "query_entries",
+  "get_entry",
   "count_entries",
+  "aggregate_entries",
   "search_entries",
+  "get_changes",
+  // safety net (recoverable only — purge/empty stay human-only)
+  "list_trash",
+  "restore_entry",
+  "list_entry_versions",
+  "restore_entry_version",
+  // assets
   "upload_asset",
   "list_assets",
-  "set_locales",
+  "delete_asset",
+  // automation
+  "define_schedule",
+  "list_schedules",
+  "delete_schedule",
+  "configure_inbound",
+  "disable_inbound",
+  "list_jobs",
+  "cancel_job",
+  // plugins (consume, not author)
   "list_plugins",
   "get_plugin",
   "enable_plugin",
+  // seo advisors (unlocked by the seo plugin)
+  "score_page",
+  "audit_site",
+  "fetch_page",
+  // tokens + client
   "list_delivery_tokens",
   "mint_delivery_token",
   "get_client_code",
+  // compute + observability
   "test_hook",
   "get_deliveries",
+  "get_audit_log",
+  // the loop
   "send_feedback",
 ]);
 
