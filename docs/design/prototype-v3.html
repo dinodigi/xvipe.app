@@ -245,6 +245,60 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--coral);outline-
 .hf-chip.pri{color:#b3324b;background:#fbe3e8;display:none}
 .hf.flag .hf-chip.pri{display:inline-block}
 
+/* ─── generic tool panes ─── */
+.tool-pane{padding:16px;overflow:auto}
+.tool-card{border:1px solid var(--line);border-radius:12px;background:var(--panel);overflow:hidden;margin-bottom:14px}
+.tool-card>h3{margin:0;padding:11px 14px;font:600 10.5px var(--mono);letter-spacing:.6px;text-transform:uppercase;
+  color:var(--faint);border-bottom:1px solid var(--hair);display:flex;gap:9px;align-items:center}
+.tag{font:9.5px var(--mono);border:1px solid var(--line);border-radius:5px;padding:2px 6px;color:var(--faint)}
+.table{width:100%;border-collapse:collapse;font-size:12.5px}
+.table th{font:600 10px var(--mono);text-transform:uppercase;letter-spacing:.6px;color:var(--faint);text-align:left;
+  padding:8px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+.table td{padding:9px 14px;border-bottom:1px solid var(--hair);color:var(--mute);white-space:nowrap}
+.table tr:last-child td{border-bottom:none}
+.table td b{color:var(--ink);font-weight:550}
+.pillch{font:600 10.5px var(--mono);border-radius:6px;padding:3px 8px}
+.pillch.ok{color:var(--live);background:rgba(79,211,158,.12)}
+.pillch.warn{color:var(--build);background:rgba(246,181,63,.12)}
+.pillch.err{color:var(--bad);background:rgba(255,93,93,.12)}
+.pillch.dim{color:var(--faint);background:#ffffff08}
+.btn.sm{height:24px;padding:0 10px;font-size:11.5px;border-radius:7px}
+.colpills{display:flex;gap:5px;padding:10px 12px;border-bottom:1px solid var(--hair)}
+.colpill{font:11.5px var(--mono);color:var(--mute);border:1px solid var(--line);border-radius:999px;padding:4px 11px}
+.colpill:hover{color:var(--ink)}
+.colpill[aria-pressed="true"]{color:var(--coral);border-color:var(--coral);background:var(--coral-dim)}
+.stat-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px}
+.stile{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:13px 15px}
+.stile .n{font-size:21px;font-weight:740;letter-spacing:-.4px}
+.stile .l{color:var(--faint);font-size:11px;margin-top:2px}
+.stile .delta{font:10.5px var(--mono);color:var(--live);margin-left:7px}
+.spark{width:100%;height:56px;display:block}
+.bars .brow{display:flex;align-items:center;gap:11px;padding:8px 14px;font-size:12px;color:var(--mute)}
+.bars .bpath{font-family:var(--mono);width:86px;color:var(--ink)}
+.bars .btrack{flex:1;height:6px;border-radius:99px;background:#ffffff0a;overflow:hidden}
+.bars .bfill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--coral),var(--coral-hot))}
+.bars .bval{font:10.5px var(--mono);color:var(--faint);width:34px;text-align:right}
+.appdot{width:8px;height:8px;border-radius:3px;flex:none}
+
+/* suggested next steps */
+.suggest{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:9px}
+.schip{font-size:12px;color:var(--mute);border:1px solid var(--line);background:#ffffff06;border-radius:999px;padding:5px 11px;transition:.14s}
+.schip:hover{border-color:var(--coral);color:var(--ink);background:var(--coral-dim)}
+
+/* command palette */
+.palette{position:fixed;inset:0;z-index:90;background:rgba(5,4,9,.55);backdrop-filter:blur(3px)}
+.pal-card{width:min(540px,92vw);margin:16vh auto 0;border-radius:14px;border:1px solid var(--line);background:var(--panel-2);
+  box-shadow:0 40px 100px -20px #000;overflow:hidden}
+.pal-in{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--hair)}
+.pal-in .caret{font:700 14px var(--mono);color:var(--coral)}
+.pal-in input{flex:1;background:none;border:none;outline:none;color:var(--ink);font:14px var(--sans)}
+.pal-in input::placeholder{color:var(--faint)}
+.pal-list{max-height:300px;overflow:auto;padding:6px}
+.pal-item{display:flex;align-items:center;gap:11px;width:100%;padding:9px 11px;border-radius:8px;font-size:13px;text-align:left;color:var(--mute)}
+.pal-item .k{margin-left:auto;font:10px var(--mono);color:var(--faint);border:1px solid var(--line);border-radius:5px;padding:2px 6px}
+.pal-item[aria-selected="true"]{background:var(--coral-dim);color:var(--ink)}
+.pal-foot{padding:8px 14px;border-top:1px solid var(--hair)}
+
 @media (max-width:1080px){ .hd .chip{display:none} }
 @media (max-width:960px){ .urlbar{display:none} .width-read{display:none} }
 @media (max-width:860px){
@@ -260,7 +314,9 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--coral);outline-
   <!-- header -->
   <header class="hd">
     <span class="brand"><span class="x">X</span>Vibe</span>
-    <div class="crumb"><span class="sep">/</span><span>xvibe</span><span class="sep">/</span><b>HealthFlow</b></div>
+    <div class="crumb"><span class="sep">/</span><span>xvibe</span><span class="sep">/</span>
+      <button id="appBtn" style="display:flex;align-items:center;gap:5px;padding:3px 6px;border-radius:7px" aria-haspopup="menu" aria-expanded="false"><b>HealthFlow</b><span style="color:var(--faint);font-size:10px">▾</span></button>
+    </div>
     <div class="grow"></div>
     <div class="chip" title="Last build: 41.2k tokens in, 98% cached"><span class="dot" id="hdDot"></span><span id="hdState">live</span><span>·</span><span>haiku · 98% cached</span></div>
     <button class="btn" id="shareBtn">Share</button>
@@ -283,6 +339,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--coral);outline-
         </div></div>
       </div>
       <div class="composer">
+        <div class="suggest" id="suggest" hidden></div>
         <div class="inrow">
           <textarea id="promptInput" rows="1" placeholder="Describe a change — it ships live…"></textarea>
           <button class="send" id="sendBtn" aria-label="Send">↑</button>
@@ -388,6 +445,120 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--coral);outline-
           </div>
         </div>
 
+        <!-- DEPLOYS tool -->
+        <div class="pane tool-pane" id="pane-deploys" hidden>
+          <div class="tool-card">
+            <h3>Publish history <span class="tag">r2 · xvibe-apps/healthflow</span></h3>
+            <table class="table" id="deployTable">
+              <thead><tr><th>Version</th><th>Published</th><th>Bundle</th><th>Status</th><th></th></tr></thead>
+              <tbody>
+                <tr><td><b>v3</b></td><td>today 10:52</td><td>8 files · 61 kB</td><td><span class="pillch ok">live</span></td><td></td></tr>
+                <tr><td><b>v2</b></td><td>today 02:14</td><td>8 files · 58 kB</td><td><span class="pillch dim">kept</span></td><td><button class="btn sm" data-rb="v2">Roll back</button></td></tr>
+                <tr><td><b>v1</b></td><td>yesterday 21:40</td><td>6 files · 44 kB</td><td><span class="pillch dim">kept</span></td><td><button class="btn sm" data-rb="v1">Roll back</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="tool-card">
+            <h3>How rollback works</h3>
+            <div style="padding:12px 14px;color:var(--mute);font-size:12.5px">
+              Every publish is an immutable snapshot in R2. Rolling back repoints <span style="font-family:var(--mono);color:var(--coral-hot)">current.json</span> —
+              nothing is rebuilt, nothing is lost, and rolling forward again is the same one-click move.
+            </div>
+          </div>
+        </div>
+
+        <!-- DATA tool -->
+        <div class="pane tool-pane" id="pane-data" hidden>
+          <div class="tool-card">
+            <h3>Collections <span class="tag">live from pluggie · converges ~15s</span></h3>
+            <div class="colpills" id="colpills">
+              <button class="colpill" aria-pressed="true" data-col="appointments">appointments · 6</button>
+              <button class="colpill" aria-pressed="false" data-col="patients">patients · 212</button>
+              <button class="colpill" aria-pressed="false" data-col="intake_forms">intake_forms · 2</button>
+            </div>
+            <div data-coltab="appointments">
+              <table class="table">
+                <thead><tr><th>starts_at</th><th>patient</th><th>reason</th><th>status</th><th>priority</th></tr></thead>
+                <tbody>
+                  <tr><td>9:00</td><td><b>Marisol Vega</b></td><td>Annual physical</td><td><span class="pillch ok">checked_in</span></td><td><span class="pillch err">true</span></td></tr>
+                  <tr><td>9:30</td><td><b>Tom Okafor</b></td><td>Follow-up — bloodwork</td><td><span class="pillch warn">intake_sent</span></td><td>—</td></tr>
+                  <tr><td>10:15</td><td><b>Lena Krüger</b></td><td>New patient consult</td><td><span class="pillch warn">intake_sent</span></td><td>—</td></tr>
+                  <tr><td>11:00</td><td><b>Ray Whitfield</b></td><td>Vaccination</td><td><span class="pillch ok">confirmed</span></td><td>—</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div data-coltab="patients" hidden>
+              <table class="table">
+                <thead><tr><th>name</th><th>last_visit</th><th>state</th></tr></thead>
+                <tbody>
+                  <tr><td><b>Marisol Vega</b></td><td>today</td><td><span class="pillch ok">active</span></td></tr>
+                  <tr><td><b>Tom Okafor</b></td><td>Jul 22</td><td><span class="pillch ok">active</span></td></tr>
+                  <tr><td><b>Lena Krüger</b></td><td>—</td><td><span class="pillch warn">intake</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div data-coltab="intake_forms" hidden>
+              <table class="table">
+                <thead><tr><th>patient</th><th>sent</th><th>state</th></tr></thead>
+                <tbody>
+                  <tr><td><b>Tom Okafor</b></td><td>08:41</td><td><span class="pillch warn">awaiting</span></td></tr>
+                  <tr><td><b>Lena Krüger</b></td><td>08:39</td><td><span class="pillch warn">awaiting</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="tool-card">
+            <h3>Rules on the backend</h3>
+            <div style="padding:12px 14px;color:var(--mute);font-size:12.5px">
+              Status changes run through Pluggie's workflow; double-booked slots are refused at write time.
+              Edits here are real writes — the same rules apply to you as to the app.
+            </div>
+          </div>
+        </div>
+
+        <!-- ANALYTICS tool -->
+        <div class="pane tool-pane" id="pane-analytics" hidden>
+          <div class="stat-tiles">
+            <div class="stile"><div class="n">312<span class="delta">+18%</span></div><div class="l">visits · 7 days</div></div>
+            <div class="stile"><div class="n">47<span class="delta">+6</span></div><div class="l">form submissions · 7 days</div></div>
+            <div class="stile"><div class="n">420<span style="font-size:13px;color:var(--faint)"> ms</span></div><div class="l">p95 load · edge</div></div>
+          </div>
+          <div class="tool-card">
+            <h3>Visits <span class="tag">example data</span></h3>
+            <div style="padding:12px 14px">
+              <svg class="spark" viewBox="0 0 300 56" preserveAspectRatio="none" aria-label="Visits, trending up">
+                <polyline points="0,44 30,40 60,42 90,34 120,37 150,28 180,30 210,22 240,25 270,14 300,10"
+                  fill="none" stroke="#ff6f4d" stroke-width="2"/>
+                <polyline points="0,44 30,40 60,42 90,34 120,37 150,28 180,30 210,22 240,25 270,14 300,10 300,56 0,56"
+                  fill="rgba(255,111,77,.09)" stroke="none"/>
+              </svg>
+            </div>
+          </div>
+          <div class="tool-card bars">
+            <h3>Top pages</h3>
+            <div class="brow"><span class="bpath">/</span><div class="btrack"><div class="bfill" style="width:61%"></div></div><span class="bval">61%</span></div>
+            <div class="brow"><span class="bpath">/patients</span><div class="btrack"><div class="bfill" style="width:24%"></div></div><span class="bval">24%</span></div>
+            <div class="brow"><span class="bpath">/schedule</span><div class="btrack"><div class="bfill" style="width:15%"></div></div><span class="bval">15%</span></div>
+          </div>
+        </div>
+
+        <!-- LOGS tool -->
+        <div class="pane tool-pane" id="pane-logs" hidden>
+          <div class="tool-card">
+            <h3>Delivery log <span class="tag">pluggie · events + api</span></h3>
+            <table class="table">
+              <thead><tr><th>when</th><th>event</th><th>target</th><th>result</th><th></th></tr></thead>
+              <tbody>
+                <tr><td>2m</td><td>POST /api/v1/intake_forms</td><td>public form</td><td><span class="pillch ok">201</span></td><td></td></tr>
+                <tr><td>2m</td><td>webhook intake.created</td><td>clinic-notify</td><td><span class="pillch ok">200</span></td><td><button class="btn sm">Re-fire</button></td></tr>
+                <tr><td>9m</td><td>email visit_confirmation</td><td>t.okafor@…</td><td><span class="pillch ok">delivered</span></td><td><button class="btn sm">Re-fire</button></td></tr>
+                <tr><td>14m</td><td>GET /api/v1/appointments</td><td>edge cache</td><td><span class="pillch dim">304 · HIT</span></td><td></td></tr>
+                <tr><td>31m</td><td>webhook intake.created</td><td>clinic-notify</td><td><span class="pillch err">timeout · retried ✓</span></td><td><button class="btn sm">Re-fire</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <!-- CODE tool -->
         <div class="pane code-pane" id="pane-code" hidden>
           <div class="tree">
@@ -432,18 +603,39 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--coral);outline-
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m8 7-5 5 5 5M16 7l5 5-5 5"/></svg>
     Code<span class="on" id="onCode" hidden>open</span>
   </button>
-  <button class="mitem soon" role="menuitem" aria-disabled="true">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg>
-    Analytics<span class="soon-tag">soon</span>
+  <button class="mitem" role="menuitem" data-tool="deploys">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0-12L7.5 7.5M12 3l4.5 4.5"/><path d="M4 15v3a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-3"/></svg>
+    Deploys<span class="on" id="onDeploys" hidden>open</span>
   </button>
-  <button class="mitem soon" role="menuitem" aria-disabled="true">
+  <button class="mitem" role="menuitem" data-tool="data">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5V12c0 1.7 3.6 3 8 3s8-1.3 8-3V5.5M4 12v6.5c0 1.7 3.6 3 8 3s8-1.3 8-3V12"/></svg>
-    Data<span class="soon-tag">soon</span>
+    Data<span class="on" id="onData" hidden>open</span>
   </button>
-  <button class="mitem soon" role="menuitem" aria-disabled="true">
+  <button class="mitem" role="menuitem" data-tool="analytics">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg>
+    Analytics<span class="on" id="onAnalytics" hidden>open</span>
+  </button>
+  <button class="mitem" role="menuitem" data-tool="logs">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16M4 10h16M4 15h10M4 20h7"/></svg>
-    Logs<span class="soon-tag">soon</span>
+    Logs<span class="on" id="onLogs" hidden>open</span>
   </button>
+</div>
+
+<!-- app switcher -->
+<div class="menu" id="appMenu" role="menu" aria-label="Apps" style="top:40px;left:96px;width:224px">
+  <div class="mhd label">Apps in xvibe</div>
+  <button class="mitem" role="menuitem"><span class="appdot" style="background:var(--hf-teal)"></span>HealthFlow<span class="on">open</span></button>
+  <button class="mitem" role="menuitem"><span class="appdot" style="background:#b3502d"></span>Ridgeline Lead Desk</button>
+  <button class="mitem" role="menuitem" style="color:var(--mute)">＋ New app…</button>
+</div>
+
+<!-- command palette -->
+<div class="palette" id="palette" hidden>
+  <div class="pal-card">
+    <div class="pal-in"><span class="caret">›</span><input id="palInput" placeholder="Type a command…" aria-label="Command"></div>
+    <div class="pal-list" id="palList"></div>
+    <div class="pal-foot label">↑↓ navigate · ↵ run · esc close</div>
+  </div>
 </div>
 
 <div class="toast" id="toast">
@@ -462,7 +654,8 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--coral);outline-
   /* —— tools registry (tabs + menu) —— */
   const openTools=new Set(["preview"]);
   const tabsEl=$("#tabs"), menu=$("#toolsMenu"), toolsBtn=$("#toolsBtn");
-  const TOOL_META={preview:{name:"Preview"},code:{name:"Code"}};
+  const TOOL_META={preview:{name:"Preview"},code:{name:"Code"},deploys:{name:"Deploys"},
+    data:{name:"Data"},analytics:{name:"Analytics"},logs:{name:"Logs"}};
   function icon(tool){return document.querySelector('.mitem[data-tool="'+tool+'"] svg').outerHTML.replace('<svg','<svg class="ico"')}
   function renderTabs(active){
     tabsEl.innerHTML="";
@@ -473,9 +666,10 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--coral);outline-
       b.innerHTML=icon(t)+TOOL_META[t].name+(t!=="preview"?'<span class="x" data-close="'+t+'" title="Close">✕</span>':"");
       tabsEl.appendChild(b);
     }
-    $("#pane-preview").hidden=active!=="preview";
-    $("#pane-code").hidden=active!=="code";
-    $("#onCode").hidden=!openTools.has("code");
+    for(const t of Object.keys(TOOL_META)){
+      const pane=document.getElementById("pane-"+t); if(pane) pane.hidden=t!==active;
+      const badge=document.getElementById("on"+t[0].toUpperCase()+t.slice(1)); if(badge) badge.hidden=!openTools.has(t);
+    }
   }
   let activeTool="preview"; renderTabs(activeTool);
   tabsEl.addEventListener("click",e=>{
@@ -488,9 +682,18 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--coral);outline-
   toolsBtn.addEventListener("click",e=>{e.stopPropagation();setMenu(!menu.classList.contains("open"))});
   document.addEventListener("click",e=>{if(!menu.contains(e.target))setMenu(false)});
   menu.addEventListener("click",e=>{
-    const item=e.target.closest(".mitem"); if(!item||item.classList.contains("soon"))return;
-    openTools.add(item.dataset.tool); activeTool=item.dataset.tool; renderTabs(activeTool); setMenu(false);
+    const item=e.target.closest(".mitem"); if(!item||!item.dataset.tool)return;
+    openTool(item.dataset.tool); setMenu(false);
   });
+  function openTool(t){ openTools.add(t); activeTool=t; renderTabs(activeTool); }
+
+  /* —— app switcher —— */
+  const appMenu=$("#appMenu"), appBtn=$("#appBtn");
+  appBtn.addEventListener("click",e=>{e.stopPropagation();
+    const v=!appMenu.classList.contains("open");
+    appMenu.classList.toggle("open",v); appBtn.setAttribute("aria-expanded",v);
+  });
+  document.addEventListener("click",e=>{if(!appMenu.contains(e.target))appMenu.classList.remove("open")});
 
   /* —— device switcher —— */
   const frame=$("#appframe"), shell=$("#pshell"), read=$("#widthRead");
@@ -528,6 +731,94 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--coral);outline-
     const svg=this.querySelector("svg"); svg.classList.remove("spinning"); void svg.getBoundingClientRect(); svg.classList.add("spinning");
   });
 
+  /* —— data: collection pills —— */
+  $("#colpills").addEventListener("click",e=>{
+    const p=e.target.closest(".colpill"); if(!p)return;
+    document.querySelectorAll(".colpill").forEach(x=>x.setAttribute("aria-pressed",x===p));
+    document.querySelectorAll("[data-coltab]").forEach(t=>t.hidden=t.dataset.coltab!==p.dataset.col);
+  });
+
+  /* —— deploys: rollback + rows —— */
+  let liveVersion="v3";
+  $("#deployTable").addEventListener("click",e=>{
+    const b=e.target.closest("[data-rb]"); if(!b)return;
+    const v=b.dataset.rb;
+    if(b.textContent!=="Confirm?"){b.textContent="Confirm?";setTimeout(()=>{b.textContent="Roll back"},2600);return;}
+    document.querySelectorAll("#deployTable tbody tr").forEach(tr=>{
+      const ver=tr.querySelector("b").textContent;
+      tr.querySelector(".pillch").outerHTML=ver===v
+        ?'<span class="pillch ok">live</span>'
+        :'<span class="pillch dim">kept</span>';
+      const cell=tr.lastElementChild;
+      cell.innerHTML=ver===v?"":'<button class="btn sm" data-rb="'+ver+'">Roll back</button>';
+    });
+    liveVersion=v;
+    toastMsg("Rolled back — current.json → "+v,"traffic serves "+v+" immediately · roll forward any time");
+  });
+  function deployRow(v,files,kb){
+    document.querySelectorAll("#deployTable .pillch.ok").forEach(p=>p.outerHTML='<span class="pillch dim">kept</span>');
+    document.querySelectorAll("#deployTable tbody tr").forEach(tr=>{
+      if(!tr.lastElementChild.innerHTML) tr.lastElementChild.innerHTML='<button class="btn sm" data-rb="'+tr.querySelector("b").textContent+'">Roll back</button>';
+    });
+    const tr=document.createElement("tr");
+    tr.innerHTML="<td><b>"+v+"</b></td><td>just now</td><td>"+files+" files · "+kb+" kB</td>"+
+      '<td><span class="pillch ok">live</span></td><td></td>';
+    document.querySelector("#deployTable tbody").prepend(tr);
+    liveVersion=v;
+  }
+  function toastMsg(main,sub){
+    const t=$("#toast");
+    t.querySelector("a").textContent="healthflow.xvibe.app";
+    t.querySelector(".sm").textContent=sub||"";
+    t.querySelector("a").previousSibling&&0;
+    t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),4400);
+  }
+
+  /* —— command palette —— */
+  const palette=$("#palette"), palInput=$("#palInput"), palList=$("#palList");
+  const COMMANDS=[
+    {label:"Publish",k:"⌘⏎",run:()=>$("#publishBtn").click()},
+    {label:"Open Preview",run:()=>openTool("preview")},
+    {label:"Open Code",run:()=>openTool("code")},
+    {label:"Open Deploys",run:()=>openTool("deploys")},
+    {label:"Open Data",run:()=>openTool("data")},
+    {label:"Open Analytics",run:()=>openTool("analytics")},
+    {label:"Open Logs",run:()=>openTool("logs")},
+    {label:"Device: fluid",run:()=>document.querySelector('.dev[data-w=""]').click()},
+    {label:"Device: tablet · 768",run:()=>document.querySelector('.dev[data-w="768"]').click()},
+    {label:"Device: phone · 390",run:()=>document.querySelector('.dev[data-w="390"]').click()},
+    {label:"New app…",run:()=>{appMenu.classList.add("open")}},
+  ];
+  let palSel=0;
+  function palRender(){
+    const q=palInput.value.trim().toLowerCase();
+    const hits=COMMANDS.filter(c=>c.label.toLowerCase().includes(q));
+    palSel=Math.min(palSel,Math.max(0,hits.length-1));
+    palList.innerHTML=hits.map((c,i)=>'<button class="pal-item" data-i="'+COMMANDS.indexOf(c)+'" aria-selected="'+(i===palSel)+'">'+c.label+(c.k?'<span class="k">'+c.k+"</span>":"")+"</button>").join("")||'<div style="padding:12px;color:var(--faint);font-size:12.5px">No matching command.</div>';
+  }
+  function palOpen(v){ palette.hidden=!v; if(v){palInput.value="";palSel=0;palRender();palInput.focus();} }
+  palList.addEventListener("click",e=>{const b=e.target.closest(".pal-item");if(!b)return;palOpen(false);COMMANDS[+b.dataset.i].run();});
+  palInput.addEventListener("input",()=>{palSel=0;palRender()});
+  palInput.addEventListener("keydown",e=>{
+    const hits=palList.querySelectorAll(".pal-item");
+    if(e.key==="ArrowDown"){e.preventDefault();palSel=Math.min(palSel+1,hits.length-1);palRender();}
+    if(e.key==="ArrowUp"){e.preventDefault();palSel=Math.max(palSel-1,0);palRender();}
+    if(e.key==="Enter"){const b=palList.querySelector('[aria-selected="true"]');if(b){palOpen(false);COMMANDS[+b.dataset.i].run();}}
+  });
+  palette.addEventListener("click",e=>{if(e.target===palette)palOpen(false)});
+
+  /* —— suggested next steps —— */
+  function suggest(items){
+    const s=$("#suggest");
+    s.hidden=!items.length;
+    s.innerHTML=items.map(t=>'<button class="schip">'+t+"</button>").join("");
+  }
+  $("#suggest").addEventListener("click",e=>{
+    const c=e.target.closest(".schip"); if(!c)return;
+    $("#promptInput").value=c.textContent; $("#promptInput").focus();
+    suggest([]);
+  });
+
   /* —— divider drag —— */
   const agent=document.querySelector(".agent"), divider=$("#divider");
   divider.addEventListener("pointerdown",e=>{
@@ -553,12 +844,18 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--coral);outline-
     frame.classList.toggle("busy",v);
     $("#sendBtn").disabled=v; $("#publishBtn").disabled=v;
   }
+  let firstBuildDone=false;
   async function run(text){
     if(busy)return;
+    suggest([]);
     bubble("you",text.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])));
     setBusy(true,"builder running…");
     const b=bubble("agent","");
-    const steps=[
+    const steps=firstBuildDone?[
+      "reading the live schema — <code>describe_collection</code>",
+      "applying the change on Pluggie · converges ~15s",
+      "updating the app UI — <code>js/desk.js</code>"
+    ]:[
       "describe_collection <code>appointments</code> — merging, full-replace",
       "defined <code>appointments</code> + <code>priority</code> flag · converges ~15s",
       "marked Marisol Vega priority — staff-set, server-enforced",
@@ -569,11 +866,16 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--coral);outline-
       b.appendChild(el);msgs.scrollTop=msgs.scrollHeight;
       await wait(850); el.className="step";
     }
-    $("#hf").classList.add("flag");
-    b.insertAdjacentHTML("beforeend","Done — priority patients carry a red chip, and the flag lives on Pluggie, not in the browser.");
+    if(!firstBuildDone){ $("#hf").classList.add("flag");
+      b.insertAdjacentHTML("beforeend","Done — priority patients carry a red chip, and the flag lives on Pluggie, not in the browser.");
+    } else {
+      b.insertAdjacentHTML("beforeend","Done — shipped to the preview. Publish when it looks right.");
+    }
+    firstBuildDone=true;
     $("#stUsage").textContent="last build · 38.6k in (97% cached) / 1.9k out";
     $("#usageHint").textContent="last build $0.03";
     setBusy(false,"1 change shipped");
+    suggest(["Add a waitlist for full days","Email visit confirmations","Let staff filter by provider"]);
     msgs.scrollTop=msgs.scrollHeight;
   }
   function submit(){
@@ -585,16 +887,21 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--coral);outline-
   $("#promptInput").addEventListener("input",function(){this.style.height="auto";this.style.height=Math.min(this.scrollHeight,110)+"px"});
 
   /* —— publish —— */
+  let nextVersion=4;
   $("#publishBtn").addEventListener("click",async function(){
     if(busy)return;
-    setBusy(true,"snapshot v4 → R2 (9 objects)");
+    const v="v"+(nextVersion++);
+    setBusy(true,"snapshot "+v+" → R2 (9 objects)");
     await wait(900);
+    deployRow(v,8,62);
     setBusy(false,"live at healthflow.xvibe.app");
-    const t=$("#toast");t.classList.add("show");
-    setTimeout(()=>t.classList.remove("show"),4400);
+    toastMsg("Published",v+" published — bundle on R2 · backend stays on Pluggie");
   });
 
-  addEventListener("keydown",e=>{if(e.key==="Escape")setMenu(false)});
+  addEventListener("keydown",e=>{
+    if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="k"){e.preventDefault();palOpen(palette.hidden);}
+    if(e.key==="Escape"){setMenu(false);palOpen(false);appMenu.classList.remove("open");}
+  });
 })();
 </script>
 </body>
