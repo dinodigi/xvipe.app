@@ -6,13 +6,20 @@
  */
 import { getPluggieToken } from "@/lib/pluggie/token";
 import { getProjectInfo } from "@/lib/pluggie/mcp";
-import { ensureApp, readTranscript, wsList } from "@/lib/apps/store";
+import { ensureApp, getApp, listApps, readTranscript, wsList } from "@/lib/apps/store";
 import { Studio } from "@/components/Studio";
 
 export const dynamic = "force-dynamic";
 
-export default async function StudioPage({ params }: { params: Promise<{ projectId: string }> }) {
+export default async function StudioPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ projectId: string }>;
+  searchParams: Promise<{ app?: string }>;
+}) {
   const { projectId } = await params;
+  const { app: requestedSlug } = await searchParams;
 
   let token: string;
   try {
@@ -29,7 +36,10 @@ export default async function StudioPage({ params }: { params: Promise<{ project
   try {
     const info = await getProjectInfo(token);
     const projectName = info.project?.branding?.displayName ?? info.project?.name ?? "project";
-    const app = ensureApp(projectId, projectName);
+    const requested = requestedSlug ? getApp(requestedSlug) : undefined;
+    const app =
+      requested && requested.projectId === projectId ? requested : ensureApp(projectId, projectName);
+    const apps = listApps().filter((a) => a.projectId === projectId);
     const transcript = readTranscript(app.slug);
     const files = wsList(app.slug);
     const connectors = info.briefing?.health?.connectors ?? [];
@@ -39,6 +49,8 @@ export default async function StudioPage({ params }: { params: Promise<{ project
     return (
       <Studio
         app={app}
+        apps={apps}
+        projectId={projectId}
         projectName={projectName}
         dbStatus={dbStatus}
         attention={attention}

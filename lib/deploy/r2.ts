@@ -75,3 +75,16 @@ export async function uploadBundle(slug: string, version: number, snapshotDir: s
 
   return { uploaded: files.length + 1, bytes, prefix };
 }
+
+/** Rollback support: repoint current.json at an existing immutable version. */
+export async function repointCurrent(slug: string, version: number, files: string[]): Promise<void> {
+  await r2().send(
+    new PutObjectCommand({
+      Bucket: process.env.R2_BUCKET!,
+      Key: `${slug}/current.json`,
+      Body: JSON.stringify({ version, publishedAt: new Date().toISOString(), files, rolledBack: true }),
+      ContentType: "application/json",
+      CacheControl: "no-cache",
+    }),
+  );
+}

@@ -14,7 +14,7 @@
  *   .xvibe/apps/<slug>/generated/**    — schema snapshots (typed client)
  *   .xvibe/apps/<slug>/transcript.jsonl— chat + build history
  */
-import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, statSync, rmSync, appendFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, statSync, rmSync, appendFileSync, cpSync } from "node:fs";
 import { join, resolve, sep, posix } from "node:path";
 
 // On Render (or any host with ephemeral filesystems) point XVIBE_STATE_DIR at
@@ -82,12 +82,9 @@ function wsPath(slug: string, relPath: string): string {
 /** Hostnames the studio itself owns — an app slug may never shadow them. */
 const RESERVED_SLUGS = new Set(["www", "studio", "api", "admin", "mail", "unlock", "apps"]);
 
-export function ensureApp(projectId: string, name: string): AppMeta {
+/** Always create a new app (multi-app: the switcher's "New app…"). */
+export function createApp(projectId: string, name: string): AppMeta {
   mkdirSync(APPS, { recursive: true });
-  // one default app per project in Phase 1 — reuse if it exists
-  const existing = listApps().find((a) => a.projectId === projectId);
-  if (existing) return existing;
-
   let slug = slugify(name);
   if (RESERVED_SLUGS.has(slug)) slug = `app-${slug}`;
   let n = 2;
@@ -104,6 +101,13 @@ export function ensureApp(projectId: string, name: string): AppMeta {
   mkdirSync(join(appDir(slug), "generated"), { recursive: true });
   writeFileSync(join(appDir(slug), "app.json"), JSON.stringify(meta, null, 2));
   return meta;
+}
+
+export function ensureApp(projectId: string, name: string): AppMeta {
+  // default app per project — reuse the first if it exists
+  const existing = listApps().find((a) => a.projectId === projectId);
+  if (existing) return existing;
+  return createApp(projectId, name);
 }
 
 export function getApp(slug: string): AppMeta | undefined {
@@ -281,4 +285,54 @@ export function deploysDir(slug: string): string {
 /** Absolute path of the app's static workspace (for byte-copy deploys). */
 export function wsDir(slug: string): string {
   return join(appDir(slug), "ws");
+}
+
+export interface DeployVersionInfo {
+  version: number;
+  at: string;
+  files: number;
+  bytes: number;
+}
+
+/** Publish history from the immutable snapshot dirs, newest first. */
+export function listDeploys(slug: string): DeployVersionInfo[] {
+  const dir = deploysDir(slug);
+  if (!existsSync(dir)) return [];
+  const out: DeployVersionInfo[] = [];
+  for (const entry of readdirSync(dir)) {
+    const m = entry.match(/^v(\d+)$/);
+    if (!m) continue;
+    const snap = join(dir, entry);
+    let files = 0;
+    let bytes = 0;
+    const walk = (d: string) => {
+      for (const f of readdirSync(d)) {
+        const full = join(d, f);
+        const st = statSync(full);
+        if (st.isDirectory()) walk(full);
+        else {
+          files += 1;
+          bytes += st.size;
+        }
+      }
+    };
+    walk(snap);
+    out.push({ version: Number(m[1]), at: statSync(snap).mtime.toISOString(), files, bytes });
+  }
+  return out.sort((a, b) => b.version - a.version);
+}
+
+/**
+ * Rollback: restore the workspace from snapshot vN (replaces any unpublished
+ * edits — the UI confirms before calling). Byte copy only, never a build.
+ */
+export function restoreDeployToWs(slug: string, version: number): WsFile[] {
+  const snap = join(deploysDir(slug), `v${version}`);
+  if (!existsSync(snap)) throw new Error(`No snapshot v${version} for ${slug}`);
+  const ws = wsDir(slug);
+  rmSync(ws, { recursive: true, force: true });
+  mkdirSync(ws, { recursive: true });
+  cpSync(snap, ws, { recursive: true });
+  updateApp(slug, { publishedVersion: version, publishedAt: new Date().toISOString() });
+  return wsList(slug);
 }
