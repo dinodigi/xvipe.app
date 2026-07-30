@@ -5,25 +5,7 @@
  */
 import { NextRequest } from "next/server";
 import { getApp, wsExists, wsReadRaw } from "@/lib/apps/store";
-
-const MIME: Record<string, string> = {
-  html: "text/html; charset=utf-8",
-  css: "text/css; charset=utf-8",
-  js: "text/javascript; charset=utf-8",
-  mjs: "text/javascript; charset=utf-8",
-  json: "application/json",
-  svg: "image/svg+xml",
-  txt: "text/plain; charset=utf-8",
-  md: "text/markdown; charset=utf-8",
-  webmanifest: "application/manifest+json",
-  ico: "image/x-icon",
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  gif: "image/gif",
-  webp: "image/webp",
-  woff2: "font/woff2",
-};
+import { contentTypeFor } from "@/lib/apps/mime";
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ slug: string; path?: string[] }> }) {
   const { slug, path = [] } = await ctx.params;
@@ -57,7 +39,6 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ slug: strin
     );
   }
 
-  const ext = found.split(".").pop()?.toLowerCase() ?? "";
   let body: Buffer;
   try {
     body = wsReadRaw(slug, found);
@@ -67,7 +48,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ slug: strin
   return new Response(new Uint8Array(body), {
     status: 200,
     headers: {
-      "content-type": MIME[ext] ?? "application/octet-stream",
+      "content-type": contentTypeFor(found),
       // live preview — always fresh; the CDN does the caching in production
       "cache-control": "no-store",
     },

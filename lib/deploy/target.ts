@@ -17,6 +17,7 @@
 import { cpSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { deploysDir, getApp, updateApp, wsDir, wsList } from "@/lib/apps/store";
+import { r2Configured, uploadBundle } from "@/lib/deploy/r2";
 
 export interface DeployResult {
   url: string;
@@ -27,14 +28,8 @@ export interface DeployResult {
   note?: string;
 }
 
-function r2Configured(): boolean {
-  return Boolean(
-    process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY && process.env.R2_BUCKET,
-  );
-}
-
 /** `studioOrigin` is the origin the studio was opened on (drives local URLs). */
-export function deployApp(slug: string, studioOrigin: string): DeployResult {
+export async function deployApp(slug: string, studioOrigin: string): Promise<DeployResult> {
   const app = getApp(slug);
   if (!app) throw new Error(`Unknown app: ${slug}`);
   const files = wsList(slug);
@@ -43,16 +38,7 @@ export function deployApp(slug: string, studioOrigin: string): DeployResult {
   }
   const bytes = files.reduce((s, f) => s + f.bytes, 0);
 
-  if (r2Configured()) {
-    // The seam is here on purpose: when R2 creds land, implement the S3 puts
-    // + CDN purge in lib/deploy/r2.ts and flip this branch. Nothing upstream
-    // changes — same result shape, same route.
-    throw new Error(
-      "R2 credentials are set but the R2 target is not wired yet (P1.4 second half). Remove the R2_* vars to keep publishing locally, or implement lib/deploy/r2.ts.",
-    );
-  }
-
-  // LocalTarget: snapshot ws → <state>/deploys/<slug>/v<N> (immutable history).
+  // Snapshot ws → <state>/deploys/<slug>/v<N> (immutable history).
   const dir = deploysDir(slug);
   mkdirSync(dir, { recursive: true });
   const version = readdirSync(dir).filter((d) => /^v\d+$/.test(d)).length + 1;
@@ -71,12 +57,23 @@ export function deployApp(slug: string, studioOrigin: string): DeployResult {
     : appsDomain
       ? `https://${slug}.${appsDomain}/`
       : `${origin.origin}/apps/${slug}/`;
-  return {
-    url,
-    version,
-    target: "local",
-    files: files.length,
-    bytes,
-    note: `Snapshot v${version} kept in state dir. R2/CDN offload activates when R2 credentials land (P1.5).`,
-  };
+
+  // Durable copy to R2 (versioned prefix + current.json pointer). A failed
+  // upload doesn't unpublish — the local snapshot serves; the miss is
+  // reported honestly in the note.
+  let note = `Snapshot v${version} on the studio host.`;
+  let target: DeployResult["target"] = "local";
+  if (r2Configured()) {
+    try {
+      const r2 = await uploadBundle(slug, version, snapshot, files);
+      target = "r2";
+      note = `Snapshot v${version} · ${r2.uploaded} objects to R2 (${process.env.R2_BUCKET}/${r2.prefix}).`;
+    } catch (e) {
+      note = `Snapshot v${version} serving locally — R2 upload FAILED: ${e instanceof Error ? e.message : String(e)}`;
+    }
+  } else {
+    note += " R2 offload inactive (no R2_* credentials).";
+  }
+
+  return { url, version, target, files: files.length, bytes, note };
 }
