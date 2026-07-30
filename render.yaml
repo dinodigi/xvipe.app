@@ -42,7 +42,7 @@ services:
       # Gate the studio — builds spend the API key. Pick any strong passphrase.
       - key: STUDIO_ACCESS_KEY
         sync: false
-      # Wildcard apps domain pointed at this service (e.g. apps.xvipe.app,
-      # serving *.apps.xvipe.app). Set after DNS is configured.
+      # Apps live at <slug>.<this domain> — set to the apex (xvibe.app) once
+      # the *.xvibe.app wildcard custom domain + DNS records are verified.
       - key: XVIBE_APPS_BASE_DOMAIN
         sync: false

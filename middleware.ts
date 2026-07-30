@@ -9,7 +9,8 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 
-const RESERVED = new Set(["www", "studio", "api"]);
+// First-level subdomains that are never app slugs (apps live at <slug>.<apps domain>)
+const RESERVED = new Set(["www", "studio", "api", "admin", "mail"]);
 
 export function middleware(req: NextRequest) {
   const host = req.headers.get("host") ?? "";

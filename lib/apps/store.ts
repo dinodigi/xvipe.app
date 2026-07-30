@@ -79,6 +79,9 @@ function wsPath(slug: string, relPath: string): string {
 
 /* ── app lifecycle ────────────────────────────────────────────────────────── */
 
+/** Hostnames the studio itself owns — an app slug may never shadow them. */
+const RESERVED_SLUGS = new Set(["www", "studio", "api", "admin", "mail", "unlock", "apps"]);
+
 export function ensureApp(projectId: string, name: string): AppMeta {
   mkdirSync(APPS, { recursive: true });
   // one default app per project in Phase 1 — reuse if it exists
@@ -86,6 +89,7 @@ export function ensureApp(projectId: string, name: string): AppMeta {
   if (existing) return existing;
 
   let slug = slugify(name);
+  if (RESERVED_SLUGS.has(slug)) slug = `app-${slug}`;
   let n = 2;
   while (existsSync(appDir(slug))) slug = `${slugify(name)}-${n++}`;
 
