@@ -154,10 +154,24 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--coral);outline-
 .pane{position:absolute;inset:0}
 .pane[hidden]{display:none}
 /* preview pane */
-.preview-pane{display:flex;align-items:stretch;justify-content:center;padding:16px;overflow:auto}
-.appframe{position:relative;width:100%;max-width:var(--dev-w,100%);margin:0 auto;background:var(--hf-bg);border-radius:12px;
-  overflow:hidden;box-shadow:0 0 0 1px var(--hair),0 24px 70px -28px #000d;
-  transition:max-width .35s cubic-bezier(.3,.9,.3,1)}
+.preview-pane{display:flex;align-items:stretch;justify-content:center;padding:14px;overflow:auto}
+.preview-shell{display:flex;flex-direction:column;width:100%;max-width:var(--dev-w,100%);margin:0 auto;
+  border-radius:12px;overflow:hidden;box-shadow:0 0 0 1px var(--hair),0 24px 70px -28px #000d;
+  transition:max-width .35s cubic-bezier(.3,.9,.3,1);background:var(--panel-2)}
+/* browser chrome on the preview itself */
+.navbar{display:flex;align-items:center;gap:4px;height:36px;padding:0 8px;background:var(--panel-2);
+  border-bottom:1px solid var(--line);flex:none}
+.nav{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;color:var(--mute)}
+.nav:hover{color:var(--ink);background:#ffffff0c}
+.nav:disabled{opacity:.35;cursor:default}
+.nav:disabled:hover{background:none;color:var(--mute)}
+.nav svg{width:14px;height:14px}
+.addr{flex:1;display:flex;align-items:center;gap:7px;height:26px;margin:0 4px;padding:0 11px;border-radius:8px;
+  background:#00000038;border:1px solid var(--line);font:11.5px var(--mono);color:var(--faint);min-width:0}
+.addr .lock{width:10px;height:10px;flex:none}
+.addr b{color:var(--ink);font-weight:500}
+.addr span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.appframe{position:relative;flex:1;min-height:0;background:var(--hf-bg)}
 .appframe::before{content:"";position:absolute;top:0;left:0;right:0;height:2px;z-index:5;opacity:0;
   background:linear-gradient(90deg,transparent,var(--coral) 35%,var(--coral-hot) 50%,var(--coral) 65%,transparent);
   background-size:200% 100%}
@@ -208,6 +222,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--coral);outline-
 .hf-top .hf-sub{color:var(--hf-mute);font-size:12px}
 .hf-top nav{margin-left:auto;display:flex;gap:16px;font-size:12.5px;color:var(--hf-mute)}
 .hf-top nav .on{color:var(--hf-teal);font-weight:600}
+.hf-top nav [data-page]{cursor:pointer}
 .hf-wrap{max-width:840px;margin:0 auto;padding:22px 24px}
 .hf-greet{display:flex;align-items:end;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .hf-greet h1{margin:0;font-size:20px;letter-spacing:-.35px}
@@ -304,28 +319,39 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--coral);outline-
           </button>
         </div>
         <span class="width-read" id="widthRead">fluid</span>
-        <div class="urlbar"><b id="urlText">healthflow.xvibe.app</b>
-          <button class="mini" id="reloadBtn" title="Reload" aria-label="Reload preview">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.5-5.8M20 3.5V8h-4.5"/></svg>
-          </button>
-          <button class="mini" title="Open in new tab" aria-label="Open in new tab">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4h6v6M20 4 11 13M9 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/></svg>
-          </button>
-        </div>
       </div>
 
       <div class="stage-body">
         <!-- PREVIEW tool -->
         <div class="pane preview-pane" id="pane-preview">
+          <div class="preview-shell" id="pshell">
+            <div class="navbar">
+              <button class="nav" id="navBack" title="Back" aria-label="Back" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 5l-7 7 7 7"/></svg>
+              </button>
+              <button class="nav" id="navFwd" title="Forward" aria-label="Forward" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 5 7 7-7 7"/></svg>
+              </button>
+              <button class="nav" id="reloadBtn" title="Reload" aria-label="Reload preview">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.5-5.8M20 3.5V8h-4.5"/></svg>
+              </button>
+              <div class="addr">
+                <svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 1 1 8 0v3"/></svg>
+                <span><b>healthflow.xvibe.app</b><span id="addrPath"></span></span>
+              </div>
+              <button class="nav" title="Open in new tab" aria-label="Open in new tab">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4h6v6M20 4 11 13M9 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/></svg>
+              </button>
+            </div>
           <div class="appframe" id="appframe">
             <div class="appscroll">
               <div class="hf" id="hf">
                 <div class="hf-top">
                   <div class="hf-logo">H</div>
                   <div><b>HealthFlow</b><div class="hf-sub">Front desk — Tuesday, Jul 30</div></div>
-                  <nav><span class="on">Today</span><span>Patients</span><span>Schedule</span><span>Reports</span></nav>
+                  <nav id="hfNav"><span class="on" data-page="/">Today</span><span data-page="/patients">Patients</span><span>Schedule</span><span>Reports</span></nav>
                 </div>
-                <div class="hf-wrap">
+                <div class="hf-wrap" id="pageToday">
                   <div class="hf-greet">
                     <div><h1>Good morning, Dana</h1><p>6 visits today · 2 intake forms waiting</p></div>
                     <button class="hf-new">+ New appointment</button>
@@ -343,8 +369,22 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--coral);outline-
                     <div class="hf-row"><span class="hf-time">11:00</span><div><div class="nm">Ray Whitfield</div><div class="why">Vaccination</div></div><span class="hf-chip ok">confirmed</span></div>
                   </div>
                 </div>
+                <div class="hf-wrap" id="pagePatients" hidden>
+                  <div class="hf-greet">
+                    <div><h1>Patients</h1><p>212 on file · 3 new this week</p></div>
+                    <button class="hf-new">+ Add patient</button>
+                  </div>
+                  <div class="hf-card" style="margin-top:18px">
+                    <h2>Recently seen</h2>
+                    <div class="hf-row"><div><div class="nm">Marisol Vega</div><div class="why">Last visit today · annual physical</div></div><span class="hf-chip ok">active</span></div>
+                    <div class="hf-row"><div><div class="nm">Tom Okafor</div><div class="why">Last visit Jul 22 · bloodwork</div></div><span class="hf-chip ok">active</span></div>
+                    <div class="hf-row"><div><div class="nm">Lena Krüger</div><div class="why">New patient · intake pending</div></div><span class="hf-chip wait">intake</span></div>
+                    <div class="hf-row"><div><div class="nm">Ray Whitfield</div><div class="why">Last visit Jun 30 · vaccination</div></div><span class="hf-chip ok">active</span></div>
+                  </div>
+                </div>
               </div>
             </div>
+          </div>
           </div>
         </div>
 
@@ -453,14 +493,35 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--coral);outline-
   });
 
   /* —— device switcher —— */
-  const frame=$("#appframe"), read=$("#widthRead");
+  const frame=$("#appframe"), shell=$("#pshell"), read=$("#widthRead");
   $("#devices").addEventListener("click",e=>{
     const b=e.target.closest(".dev"); if(!b)return;
     document.querySelectorAll(".dev").forEach(x=>x.setAttribute("aria-pressed",x===b));
     const w=b.dataset.w;
-    frame.style.setProperty("--dev-w",w?w+"px":"100%");
+    shell.style.setProperty("--dev-w",w?w+"px":"100%");
     read.textContent=w?w+" px":"fluid";
   });
+
+  /* —— preview navigation (back / forward / addr / in-app links) —— */
+  const nav={stack:["/"],i:0};
+  const PAGES={"/":"pageToday","/patients":"pagePatients"};
+  function showPage(path){
+    for(const [p,id] of Object.entries(PAGES)) document.getElementById(id).hidden=p!==path;
+    document.querySelectorAll("#hfNav [data-page]").forEach(n=>n.classList.toggle("on",n.dataset.page===path));
+    $("#addrPath").textContent=path==="/"?"":path;
+    $("#navBack").disabled=nav.i===0;
+    $("#navFwd").disabled=nav.i>=nav.stack.length-1;
+  }
+  function goto(path,push=true){
+    if(push){nav.stack.length=nav.i+1;nav.stack.push(path);nav.i++;}
+    showPage(path);
+  }
+  $("#hfNav").addEventListener("click",e=>{
+    const p=e.target.closest("[data-page]"); if(!p||p.classList.contains("on"))return;
+    goto(p.dataset.page);
+  });
+  $("#navBack").addEventListener("click",()=>{if(nav.i>0){nav.i--;showPage(nav.stack[nav.i]);}});
+  $("#navFwd").addEventListener("click",()=>{if(nav.i<nav.stack.length-1){nav.i++;showPage(nav.stack[nav.i]);}});
 
   /* —— reload —— */
   $("#reloadBtn").addEventListener("click",function(){
