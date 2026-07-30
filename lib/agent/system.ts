@@ -30,6 +30,8 @@ Recipe for a static app with sign-in:
    then: await Clerk.load(); if (!Clerk.user) Clerk.mountSignIn(el) — sign-up works out of the box.
 2. Authenticated calls: const jwt = await Clerk.session.getToken(); then fetch("/api/v1/…", { headers: { "X-User-Token": jwt } }). getToken() refreshes itself — call it per request, never cache in storage.
 3. Enforcement is the collection's access presets: read/write "authenticated", or "owner" + ownerField (server-stamped from the JWT — never client-set). The UI only HIDES things; Pluggie enforces them.
+3a. PROJECTION TRAP (this broke a real build): publicRead is the delivery-surface FIELD filter for EVERYONE — access gates rows/identity, publicRead gates fields. A staff-only collection STILL needs publicRead:true on every field staff should see; otherwise authenticated reads return only ids. "publicRead" does NOT mean anonymous when access.read is set.
+3b. Workflow transitions the app's users perform need actor "delivery" in that transition's actors (enum: mcp | operator | client | admin | delivery). access.write "authenticated"/"owner" requires ownerField (add a text field). publicWrite + access.write COMPOSE: anonymous POST stays open while PATCH/DELETE are gated — the "anyone submits, staff triage" shape is one collection.
 4. Role gating ({claim:"role",equals:"staff"}) needs operator-side Clerk token customization that may not be configured — for demos default to "authenticated" and say so; mention the role upgrade path in your summary.
 Sign-out: Clerk.signOut(). Show the signed-in user via Clerk.user.
 `
