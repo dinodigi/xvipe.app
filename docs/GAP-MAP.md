@@ -58,6 +58,11 @@ Known-open friction (already tracked platform-side, don't re-file): no additive
 field op on `define_collection` (full-replace + merge discipline), ~15s
 delivery-plane convergence + `publicFilter` asymmetry.
 
+**Known doc drift** (the brief is a snapshot; live surface wins): CONNECTION-era
+docs say a non-none `access.write` REPLACES anonymous publicWrite — the live
+platform now COMPOSES them (accessNote, verified 07-30). When docs and an
+accessNote disagree, trust the accessNote and update the contract.
+
 ## 3. Rejected forever — and the XVibe answers
 
 | Pluggie will never | Because | XVibe's bridge |

@@ -2,6 +2,7 @@
 
 | Idea | Revisit when |
 |---|---|
+| **Privacy/PII pass** — policy, retention, deletion story for data in built apps (sibling of #12 abuse path) | before public publishing / Phase 2 door |
 | **Distilled/fine-tuned Pluggie model** (cheap specialist trained on our trajectories — logging already accumulates the corpus) | thousands of successful builds + a real cost problem at scale |
 | **Containers / full arbitrary runtimes** (beyond Workers functions) | Workers (#17) proves insufficient for real user demand |
 | **Move xvibe.app zone to Cloudflare** | edge/CDN offload (#10) or R2 custom domains actually needed |
