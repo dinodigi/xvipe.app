@@ -3,7 +3,7 @@
 ## In progress
 *(nothing — awaiting the P0 go, see below)*
 
-## Next up (queued, in order — from AGENT-PLAN.md)
+## Next up (queued, in order — Cloudflare route decided 07-31)
 1. **#13 P0 agent strength** — Sonnet-5 build tier, static verification
    (JS parse + API-lint), `probe_app` smoke tool. **⚑ needs your "go P0"
    (build cost rises ~3× to $0.60–1.50/build).**
@@ -13,10 +13,15 @@
    (~$3–5/sweep).
 4. **#15 Claude Agent SDK spike** — embed the Claude Code harness; go/no-go
    on error rate + cost.
-5. **#16 Plan mode** — PRD builder + per-task checkpoints + schema dry-runs;
-   file the Neon-branch request on the Pluggie wall.
-6. **#17 Workers functions layer** — the no-limits runtime (gated on #12 +
-   cost caps).
+5. **CF-1: move xvibe.app zone to Cloudflare** (⚑ operator-assisted:
+   nameserver flip at Namecheap; CF auto-imports records) — prerequisite for
+   edge serving + Workers routing.
+6. **#10 Edge serving worker** — apps served from R2 at the edge + token-
+   injecting /api/v1 proxy in the worker; Render leaves the app-serving path.
+7. **#17 Workers-for-Platforms functions** — per-app server code on rented
+   isolates, behind `xvibe/runtime` shim + `RuntimeTarget` (exit insurance in
+   AGENT-PLAN §4). Gated on #12 kill-switch + cost caps.
+8. **#16 Plan mode** — PRD builder + per-task checkpoints + schema dry-runs.
 
 ## Waiting on operator ⚑
 - **"go P0"** — approves the Sonnet build tier spend (top of queue).

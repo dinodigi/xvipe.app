@@ -92,6 +92,29 @@ there without ever OWNING a runtime:
    scheduled work, not vetoes): abuse kill-switch (task #12), hard per-app
    cost caps, takedown/report path, support runbook.
 
+### Exit insurance — decided 07-31 (own-runtime stays a re-target, not a rewrite)
+
+The Cloudflare route is NOW; these rules keep the 100%-own-runtime exit open
+for the funded-scale future:
+1. **Standard code shape.** Agent-written functions are WinterCG-style fetch
+   handlers importing ONLY `xvibe/runtime` (our thin shim) — never raw CF
+   APIs. The same modules then run on Node/Bun/Deno/Firecracker with a shim
+   swap.
+2. **`RuntimeTarget` interface** in the deploy layer (same pattern as
+   DeployTarget): Workers-for-Platforms today; Fly/own-Firecracker later are
+   new targets, not new architectures.
+3. **Data gravity stays portable.** App state lives in Pluggie (Neon =
+   Postgres) and R2 (S3 API). Durable Objects only for ephemeral realtime,
+   never as a primary store — DO data is the one thing that would not move.
+4. **We own the domains and the routing** (`*.xvibe.app`), so a runtime swap
+   is a per-app routing flip users never see. Migration play at scale: run
+   both runtimes, canary per app, move heavy/paying apps first — our own
+   metering data picks them.
+5. **What the funded exit actually is:** Firecracker/gVisor on rented metal,
+   an orchestrator, and a 3–5 person infra/SRE + abuse team, ~6–12 months.
+   The trigger is margin math (sustained paid compute > owned-cluster cost +
+   team), never capability.
+
 ## 5. What we deliberately do NOT do
 
 - No model fine-tuning now: frontier models aren't tunable by us, weights

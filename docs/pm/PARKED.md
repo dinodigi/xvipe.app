@@ -12,5 +12,6 @@
 | **Phase 2 standalone front door** (XVibe accounts, project provisioning) | Pluggie D3/OAuth + MT-1 land platform-side |
 | **Pluggie as a claude.ai connector** (one-click MCP for everyone) | D3/OAuth ships |
 | **Vertical starter kits** (clinic/agency/booking prompt+plugin packs) | after plan mode (#16); packaging mechanism = Pluggie plugins |
+| **Theme editor** — design-token themes for generated apps (palette/type/spacing presets the agent applies; answers the brief's open question "does XVibe ship themes?" — scope as its own design system when taken up) | operator-flagged 07-31 as a priority product investment; take up after P0/#15 free the capacity |
 | **Semantic search, per-row ACL sharing** (platform) | user demand via wall reports |
 | **Agent-suggested next steps as dynamic chips** (agent-generated, not static) | with SDK migration (#15) — structured output support makes it trivial |
