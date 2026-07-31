@@ -1,6 +1,10 @@
 # Shipped & verified
 
 ## 2026-07-30
+- **Wall items 8–11 filed** (total now 11): Neon-backed project branching
+  (plan-mode enabler), one-call project reset (eval-harness ergonomics),
+  define_collection dryRun (schema diff previews), machine-readable
+  not-supported registry in the briefing (honesty at scale).
 - **PM system** (this folder) + AGENT-PLAN.md (agent-strength roadmap P0–P3).
 - **UI v3 live** (`b628e3e`→`2a8aef2`): IDE workbench — Tools menu/tabs,
   Preview with browser chrome + device widths, Code viewer, **Deploys with
