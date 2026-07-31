@@ -61,17 +61,29 @@ harness, embed it.
 1. **Plan tool (PRD builder).** A planning pass that turns a prompt into
    `PRD.md` + a task list (stored per app, shown as a studio tool). Building
    executes tasks one at a time; each task = its own chat turn + checkpoint.
-2. **Checkpoints = extend Deploys.** Before each task: automatic workspace
-   snapshot (same machinery as publish versions). Task went wrong → one-click
-   restore. This is "work on a copy" for the frontend, shippable now.
-3. **Backend branching (the hard half).** Pluggie collections are live —
-   there is no schema sandbox. Near-term: schema changes in plan mode run as
-   **dry-runs first** (define_collection plans + transact dryRun) and the
-   diff is shown for approval before execution. Real fix: **file on the wall
-   — project branches backed by Neon branching** (Neon supports DB branches
-   natively; Pluggie sits on Neon). Branch project → task runs against the
-   branch → merge = replay defines. That single platform feature makes
-   XVibe's task system fully Replit-grade.
+2. **Task copies + per-task previews (operator design, decided 07-31).**
+   Opening a task byte-copies main's workspace into `tasks/<id>/ws` (same
+   snapshot machinery as Deploys). Each task serves its own live preview at
+   `<app>--t<n>.<domain>` — rides the existing wildcard, zero DNS work
+   (`--` reserved in app slugs as the separator). Task went wrong → discard
+   the copy; main never moved.
+3. **Merge queue — one task at a time, all merging to main.** Three-way at
+   merge turn: task base vs. main head vs. task copy. Disjoint files
+   auto-merge; overlaps get an **agent semantic-merge** (base + both diffs +
+   both task *intents* — never raw conflict markers), then the P0 quality
+   gate, then a diff + merged preview for approval → lands as a new
+   checkpoint. Open tasks keep their base and rebase the same way when their
+   turn comes; conflicts stay two-sided forever.
+4. **Backend branching (the hard half).** Pluggie collections are live —
+   task copies duplicate FILES, not the database, so previews share the live
+   backend. Policy until real branches: **additive** schema ops (new
+   collection/field/schedule) apply immediately — harmless to main;
+   **mutating/destructive** ops are deferred, recorded as a plan, and land
+   as an approved **dry-run diff** at merge time. Real fix: **filed on the
+   wall — project branches backed by Neon branching** (Neon supports DB
+   branches natively; Pluggie sits on Neon). Branch project → task runs
+   against the branch → merge = replay defines. That single platform
+   feature makes the task tree fully isolated, backend included.
 
 ## 4. P3 — no limits (the compute ladder, now committed)
 
