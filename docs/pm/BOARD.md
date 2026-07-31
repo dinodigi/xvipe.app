@@ -18,10 +18,13 @@
    edge serving + Workers routing.
 6. **#10 Edge serving worker** — apps served from R2 at the edge + token-
    injecting /api/v1 proxy in the worker; Render leaves the app-serving path.
-7. **#17 Workers-for-Platforms functions** — per-app server code on rented
+7. **#18 Custom domains** (Cloudflare for SaaS custom hostnames) — user
+   CNAMEs their domain, CF issues/renews certs, edge worker maps hostname →
+   app; Domains tool in the studio. The flagship paid-tier anchor.
+8. **#17 Workers-for-Platforms functions** — per-app server code on rented
    isolates, behind `xvibe/runtime` shim + `RuntimeTarget` (exit insurance in
    AGENT-PLAN §4). Gated on #12 kill-switch + cost caps.
-8. **#16 Plan mode** — PRD builder + per-task checkpoints + schema dry-runs.
+9. **#16 Plan mode** — PRD builder + per-task checkpoints + schema dry-runs.
 
 ## Waiting on operator ⚑
 - **"go P0"** — approves the Sonnet build tier spend (top of queue).
