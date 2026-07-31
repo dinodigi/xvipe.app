@@ -1,7 +1,7 @@
 # Shipped & verified
 
 ## 2026-07-30
-- **Wall items 8–11 filed** (total now 11): Neon-backed project branching
+- **Wall items 8–12 filed** (total now 12; #12 = doc-drift on publicWrite/access.write compose semantics): Neon-backed project branching
   (plan-mode enabler), one-call project reset (eval-harness ergonomics),
   define_collection dryRun (schema diff previews), machine-readable
   not-supported registry in the briefing (honesty at scale).
