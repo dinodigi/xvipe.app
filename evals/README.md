@@ -65,8 +65,22 @@ Two consequences of a shared project, both deliberate:
 - Cleanup still deletes only what the run **created**, so a task that reuses
   a pre-existing collection never destroys it — but it may write rows into it.
 
-A one-call project reset is filed on the Pluggie wall; when it ships, each
-task gets a genuinely clean slate and both caveats disappear.
+### Factory reset (`npm run evals:reset`)
+
+The one-call reset we filed on the Pluggie wall (2026-07-30) **shipped** as
+`reset_project`, and `evals:reset` wraps it:
+
+```bash
+npm run evals:reset            # plan only — prints exactly what would be wiped
+npm run evals:reset -- --wipe  # execute (deliberately two steps)
+```
+
+It is **not** part of a sweep and must not become one. A normal run already
+cleans up after itself; this wipes the *entire project*, including anything
+built there by hand (the guestbook demo, the support-inbox test app), and it
+is unrecoverable — trash and version history go too. Delivery tokens,
+connectors and the audit log survive. Reach for it when the project has drifted
+into a mess, not on a schedule.
 
 ## Adding a task
 

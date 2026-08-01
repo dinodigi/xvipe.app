@@ -79,6 +79,21 @@ accessNote disagree, trust the accessNote and update the contract.
 3. `get_client_code` missing update/remove for claim-gated collections
    (agent-filed, 2026-07-25).
 4. Third-party connector category (idea, 2026-07-30) — the §2 headliner.
+5. Retraction (2026-07-31): a builder-filed "probe_app 401 after mint" report
+   was OUR bug (stale token custody), not the platform's. Filed the correction
+   ourselves — the wall stays trustworthy only if we withdraw our own noise.
+
+## 4a. Wall requests that came back SHIPPED ✅
+
+The loop works — receipts, so we keep using it:
+
+| Asked | Filed | Shipped as |
+|---|---|---|
+| One-call project reset (eval-harness ergonomics) | 2026-07-30 | **`reset_project`** (OPS-6) — plan-by-default, `confirm:true` to wipe; wrapped as `npm run evals:reset` |
+
+Still outstanding from the same batch: Neon-backed project branching (the
+task-tree enabler), `define_collection` dryRun, machine-readable
+not-supported registry.
 
 ## 5. Operating rule
 
