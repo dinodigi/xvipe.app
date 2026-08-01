@@ -47,3 +47,11 @@ services:
       # the *.xvibe.app wildcard custom domain + DNS records are verified.
       - key: XVIBE_APPS_BASE_DOMAIN
         sync: false
+      # Edge serving (docs/CLOUDFLARE.md). With these set, publishing mirrors
+      # each app's delivery token into the Worker's KV namespace, which is
+      # where the edge reads it to inject at /api/v1. Unset = the studio keeps
+      # serving apps and injecting tokens itself, which is the safe default.
+      - key: CLOUDFLARE_API_TOKEN
+        sync: false
+      - key: CF_KV_NAMESPACE_ID
+        sync: false
