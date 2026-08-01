@@ -123,9 +123,17 @@ async function serveBundle(request, env, slug, url) {
   }
   if (!object) return page(404, "Not found", `No file at /${rel}.`);
 
+  // Weak validator: a strong etag is invalid once the body is transformed.
+  // Measured 2026-08-01: Cloudflare strips the validator entirely from
+  // compressed streamed Worker responses (weak or strong), so revalidation
+  // costs a fresh HTML fetch rather than a 304. Kept because it is correct
+  // and costs nothing — the bulk of bytes are immutable versioned assets,
+  // which never revalidate at all.
+  const etag = object.httpEtag.startsWith("W/") ? object.httpEtag : `W/${object.httpEtag}`;
+
   const headers = new Headers();
   headers.set("content-type", contentTypeFor(rel));
-  headers.set("etag", object.httpEtag);
+  headers.set("etag", etag);
   // The version prefix makes every object immutable; the pointer is what moves,
   // so HTML is revalidated and assets are cached hard.
   headers.set(
@@ -134,7 +142,7 @@ async function serveBundle(request, env, slug, url) {
   );
   headers.set("x-xvibe-version", String(current.version));
 
-  if (request.headers.get("if-none-match") === object.httpEtag) {
+  if (request.headers.get("if-none-match") === etag) {
     return new Response(null, { status: 304, headers });
   }
   return new Response(request.method === "HEAD" ? null : object.body, { status: 200, headers });

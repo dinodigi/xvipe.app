@@ -1,8 +1,10 @@
 # Board — updated 2026-07-31
 
 ## In progress
-- **#10 Edge serving worker** — code ready; needs `wrangler deploy` (⚑ 2 min
-  of operator terminal, see docs/CLOUDFLARE.md).
+- **#10 Edge serving worker** — **deployed + verified 08-01** (serving, token
+  injection and POST all proven on a test hostname). Remaining: Render env
+  vars for automatic token sync, then move real traffic (orange-cloud
+  `*.apps`, or go straight to short URLs). See docs/CLOUDFLARE.md.
 
 ## Next up (queued, in order — Cloudflare route decided 07-31)
 1. **#19 Tool Runner adoption** — replaces the reversed #15 (spike said no-go

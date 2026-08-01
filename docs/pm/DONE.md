@@ -1,5 +1,28 @@
 # Shipped & verified
 
+## 2026-08-01 — edge worker DEPLOYED + verified end to end
+- **`xvibe-edge` live on Cloudflare** (version `0ef48bd1`, route
+  `*.xvibe.app/*`), KV namespace `XVIBE_TOKENS` created and bound, R2
+  `xvibe-apps` bound. **Serves no production traffic yet** — real records are
+  still DNS-only so the route cannot fire on them.
+- **Verified on a throwaway proxied hostname** (`xvibe.xvibe.app` — new, unused,
+  so nothing could break): page served from R2 via `current.json`
+  (`x-xvibe-version: 7`), HTML revalidates while assets are immutable, SPA
+  fallback, real 404s, `GET /api/v1` returning real rows with the token
+  injected at the edge, **`POST /api/v1` → 201 Created** (the form-submission
+  path), and cookies stripped before they reach the platform.
+- **One secret, not two**: `lib/deploy/kv.ts` now reads the same
+  `CLOUDFLARE_API_TOKEN` wrangler uses.
+- **Known limitation, measured not assumed**: Cloudflare strips the ETag from
+  compressed streamed Worker responses (weak or strong), so HTML revalidation
+  re-fetches instead of answering 304. Cost is one small HTML body; versioned
+  assets are immutable and never revalidate. Weak etag kept as it is correct
+  and free.
+- **Operator friction worth remembering**: the deploy token needed
+  `Workers R2 Storage: Read` on top of KV/Scripts/Routes — wrangler validates
+  the R2 binding at deploy time. And a `&&` command chain fails in Windows
+  PowerShell, which is why the first interactive login attempt never ran.
+
 ## 2026-08-01 — #15 harness spike (verdict + 3 bug fixes)
 - **NO-GO on the Claude Agent SDK; adopt the SDK Tool Runner instead** —
   reverses AGENT-PLAN §2. The Agent SDK ships Bash + local Read/Write/Edit;

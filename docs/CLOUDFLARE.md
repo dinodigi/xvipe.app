@@ -62,7 +62,42 @@ Apps then live at `<app>.xvibe.app` — the short URL that was always the plan.
 
 ---
 
-## Step 2 — deploy the edge worker (#10) — me, after step 1
+## Step 2 — deploy the edge worker (#10) ✅ DEPLOYED + VERIFIED 2026-08-01
+
+`xvibe-edge` is live on Cloudflare (version `0ef48bd1`), route `*.xvibe.app/*`,
+bindings: `TOKENS` KV (`4cf7af4bb17d441a9c74e63f60a01282`), `BUNDLES` →
+`xvibe-apps`. **It serves no production traffic yet** — every real record is
+still DNS-only, so the route cannot fire on them.
+
+Proven end to end against `xvibe.xvibe.app`, a throwaway proxied hostname
+added for the test (nothing else used it, so nothing could break):
+
+| Check | Result |
+|---|---|
+| page served from R2 via `current.json` | 200, `x-xvibe-version: 7` |
+| HTML revalidates, assets immutable | `max-age=0, must-revalidate` / `max-age=31536000, immutable` |
+| SPA fallback on extensionless route | 200 |
+| missing asset | real 404 |
+| `GET /api/v1/…` with edge-injected token | 200 + real rows |
+| **`POST /api/v1/…` (form submission)** | **201 Created** |
+| cookies forwarded upstream | none (stripped) |
+
+Known limitation: Cloudflare strips the ETag from compressed streamed Worker
+responses, so HTML revalidation re-fetches instead of answering 304. Cost is
+one small HTML body; versioned assets are immutable and unaffected.
+
+### Remaining for full cutover
+
+1. Set `CLOUDFLARE_API_TOKEN` + `CF_KV_NAMESPACE_ID` on Render so publishing
+   mirrors each app's delivery token to KV automatically (today one token was
+   written by hand for the test).
+2. Move traffic by orange-clouding `*.apps` — or skip straight to Step 3 and
+   put the short `<app>.xvibe.app` form on the edge instead.
+3. Delete the temporary `xvibe` CNAME once the real path is live.
+
+---
+
+## Step 2 (original plan) — deploy the edge worker
 
 Written and tested already: `workers/edge/` (15/15 behaviour tests green via
 `node workers/edge/test.mjs` — routing, SPA fallback, caching, 304s, token
