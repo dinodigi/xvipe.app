@@ -31,6 +31,8 @@ export interface AppMeta {
   updatedAt: string;
   publishedAt?: string;
   publishedVersion?: number;
+  /** studio model selector: "auto" (router decides) | "haiku" | "sonnet" | "opus" */
+  modelPin?: string;
 }
 
 /* ── workspace write rules — the agent writes here, so be strict ─────────── */

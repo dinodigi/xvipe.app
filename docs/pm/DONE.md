@@ -1,5 +1,34 @@
 # Shipped & verified
 
+## 2026-07-31
+- **P0 agent strength (#13) shipped + live-verified**:
+  - **Model tiers + router** (`lib/agent/models.ts`): auto-classification per
+    request — verified live: a question routed `question → claude-haiku-4-5`;
+    a build prompt routed `build → claude-sonnet-5`. Bias-to-build on any
+    ambiguity/failure. `BUILDER_MODEL` retired; `XVIBE_FORCE_MODEL` is the
+    cost-emergency override.
+  - **Studio model selector** (composer, persisted per app): Auto / Fast ·
+    Haiku / Strong · Sonnet / Max · Opus; route + why shown as a chat chip.
+  - **Static verification** (`lib/agent/verify.ts`, esbuild): syntax errors
+    BLOCK the write (JS/CSS/JSON/inline scripts, line numbers); API-lint
+    checks every `/api/v1/<collection>` reference against the LIVE schema and
+    returns the collection's public-field list as ground truth. 5/5 live
+    tests passed.
+  - **probe_app tool**: server-side delivery GETs with the app's real token;
+    reports status + fields-after-projection + empty-projection warnings.
+  - **First Sonnet build end-to-end** (guestbook, ~$1.50): collection +
+    seeds + 3 files (api-lint ok) + agent-called probes; rendered in the
+    browser through the token-injecting proxy.
+  - **Custody healing** (bug found BY probe_app on its first real build):
+    mint interception had reused a locally stored token revoked in the 07-30
+    wipe. Stored tokens are now health-checked on reuse and dead ones
+    replaced by a fresh mint — verified live (probe 401 → 200). Retraction
+    of the agent's mis-attributed wall report filed (Pluggie was correct).
+- **Decisions recorded**: P0 approval + Claude-only selector; agents-as-
+  passes + intent-replay merges; task trees v2 (per-task copies + previews,
+  serialized merge queue); planning layer (backlog → sprints); dev/prod envs
+  as the data split; secret ownership map (authority vs custody).
+
 ## 2026-07-30
 - **Wall items 8–12 filed** (total now 12; #12 = doc-drift on publicWrite/access.write compose semantics): Neon-backed project branching
   (plan-mode enabler), one-call project reset (eval-harness ergonomics),

@@ -28,8 +28,9 @@ services:
         value: https://pluggie.app/api/mcp
       - key: PLUGGIE_DELIVERY_BASE
         value: https://pluggie.app/api/v1
-      - key: BUILDER_MODEL
-        value: claude-haiku-4-5
+      # Model tiers are routed per request (P0); no model env needed.
+      # XVIBE_FORCE_MODEL may be added in the dashboard as a cost-emergency
+      # override. (BUILDER_MODEL is retired — safe to delete if present.)
       # Secrets + deployment-specific values — Render prompts for these:
       - key: PLUGGIE_MCP_TOKEN
         sync: false

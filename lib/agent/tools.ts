@@ -12,6 +12,8 @@
  * it stays out of the context window, the transcript, and any generated file.
  */
 import { callTool, listTools } from "@/lib/pluggie/mcp";
+import { DELIVERY_BASE } from "@/lib/pluggie/delivery";
+import { createBuildContext, verifyAppFile, type BuildContext } from "@/lib/agent/verify";
 import {
   getApp,
   saveGenerated,
@@ -140,6 +142,23 @@ const WORKSPACE_TOOLS: AnthropicTool[] = [
     },
   },
   {
+    name: "probe_app",
+    description:
+      "Smoke-test the app's live data endpoints server-side with the app's REAL delivery token (the same injection the serving edge does). Call it after wiring any page to data: pass the /api/v1/… paths the app fetches (with query strings if the app uses them). Returns per path: HTTP status, row count, and the field names actually present after publicRead projection — a 200 with near-empty rows is a projection problem to fix on the collection, not in the client. Pass userToken (a Clerk JWT) to test authenticated reads the way the app performs them.",
+    input_schema: {
+      type: "object",
+      properties: {
+        paths: {
+          type: "array",
+          items: { type: "string" },
+          description: 'delivery paths to probe, e.g. ["/api/v1/tasks?status=open", "/api/v1/tasks"] — max 6',
+        },
+        userToken: { type: "string", description: "optional X-User-Token (end-user JWT) for gated reads" },
+      },
+      required: ["paths"],
+    },
+  },
+  {
     name: "set_app_meta",
     description: "Set the app's display name and/or one-line description (shown in the studio chrome).",
     input_schema: {
@@ -185,12 +204,87 @@ export async function dispatchTool(
   mcpToken: string,
   name: string,
   input: Record<string, unknown>,
+  ctx?: BuildContext,
 ): Promise<ToolOutcome> {
+  const bctx = ctx ?? createBuildContext();
   try {
     /* ── workspace tools ── */
     if (name === "write_app_file") {
-      const file = wsWrite(slug, String(input.path), String(input.content));
-      return { result: { ok: true, ...file }, isError: false, summary: `wrote ${file.path} (${file.bytes} B)`, filesChanged: [file.path] };
+      const path = String(input.path);
+      const content = String(input.content);
+      // P0.2 sight: parse-check + API-lint before anything lands on disk.
+      const v = await verifyAppFile(path, content, mcpToken, bctx);
+      if (v.blockers.length) {
+        return {
+          result: { error: "File NOT written — syntax errors. Fix them and resend the complete file.", problems: v.blockers },
+          isError: true,
+          summary: `✗ ${path} — ${preview(v.blockers[0], 90)}`,
+        };
+      }
+      const file = wsWrite(slug, path, content);
+      const clean = v.findings.length === 0;
+      return {
+        result: {
+          ok: clean,
+          ...file,
+          ...(v.findings.length ? { apiLint: v.findings } : {}),
+          ...(v.notes.length ? { api: v.notes } : {}),
+        },
+        isError: !clean,
+        summary: clean
+          ? `wrote ${file.path} (${file.bytes} B)${v.notes.length ? " · api-lint ok" : ""}`
+          : `wrote ${file.path} — ${preview(v.findings[0], 90)}`,
+        filesChanged: [file.path],
+      };
+    }
+    if (name === "probe_app") {
+      const token = getDeliveryToken(slug);
+      if (!token) {
+        return {
+          result: { error: "This app has no delivery token yet — call mint_delivery_token first, then probe." },
+          isError: true,
+          summary: "probe_app: no delivery token yet",
+        };
+      }
+      const paths = Array.isArray(input.paths) ? input.paths.map(String).slice(0, 6) : [];
+      if (!paths.length) {
+        return { result: { error: 'Pass paths: ["/api/v1/…"]' }, isError: true, summary: "probe_app: no paths given" };
+      }
+      const probes: Record<string, unknown>[] = [];
+      for (const p of paths) {
+        if (!p.startsWith("/api/v1/")) {
+          probes.push({ path: p, error: "probe_app only accepts /api/v1/* paths" });
+          continue;
+        }
+        try {
+          const headers: Record<string, string> = { authorization: `Bearer ${token}` };
+          if (input.userToken) headers["x-user-token"] = String(input.userToken);
+          const res = await fetch(`${DELIVERY_BASE()}${p.slice("/api/v1".length)}`, {
+            headers,
+            cache: "no-store",
+            signal: AbortSignal.timeout(10_000),
+          });
+          const text = await res.text();
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(text);
+          } catch {
+            parsed = undefined;
+          }
+          probes.push(probeSummary(p, res.status, parsed, text));
+        } catch (e) {
+          probes.push({ path: p, error: e instanceof Error ? e.message : String(e) });
+        }
+      }
+      const issues = probes.filter((r) => r.error || r.warning).length;
+      return {
+        result: {
+          probes,
+          note: "fields = what the app actually receives after publicRead projection. Empty fields on a 200 = fix publicRead on the collection, never the client.",
+        },
+        isError: false,
+        summary: issues ? `probed ${probes.length} endpoint(s) — ${issues} issue(s) to read` : `probed ${probes.length} endpoint(s) — all healthy`,
+      };
     }
     if (name === "read_app_file") {
       const content = wsRead(slug, String(input.path));
@@ -218,13 +312,16 @@ export async function dispatchTool(
     }
 
     if (name === "mint_delivery_token") {
-      if (getDeliveryToken(slug)) {
+      const existing = getDeliveryToken(slug);
+      if (existing && (await deliveryTokenAlive(existing))) {
         return {
           result: { ok: true, note: "This app already has a delivery token at the serving edge — reusing it. Rotation happens via revoke + re-mint in the console." },
           isError: false,
           summary: "delivery token already in custody — reused",
         };
       }
+      // No token, or the stored one is dead (revoked/rotated upstream) —
+      // mint fresh and REPLACE custody, or the app 401s forever.
       const minted = await callTool<{ token?: string; value?: string; project?: { name?: string } }>(name, input, mcpToken);
       const raw = minted.token ?? minted.value;
       if (!raw) return { result: minted, isError: true, summary: "mint returned no token" };
@@ -234,10 +331,13 @@ export async function dispatchTool(
           ok: true,
           label: input.label,
           project: minted.project ?? undefined,
+          ...(existing ? { note: "The previously stored token was dead (revoked upstream) — replaced with this fresh one." } : {}),
           token: "<redacted — stored by XVibe at the serving edge; the app calls /api/v1 with no credential>",
         },
         isError: false,
-        summary: `minted delivery token "${preview(input.label, 40)}" → edge custody`,
+        summary: existing
+          ? `stored delivery token was dead — minted a fresh replacement "${preview(input.label, 40)}"`
+          : `minted delivery token "${preview(input.label, 40)}" → edge custody`,
       };
     }
 
@@ -257,12 +357,73 @@ export async function dispatchTool(
     }
 
     const result = await callTool<unknown>(name, input, mcpToken);
+    // schema changed mid-build → the API-lint cache must re-describe it
+    if (name === "define_collection" || name === "delete_collection") {
+      bctx.collections.delete(String(input.name));
+    }
     return { result, isError: false, summary: summarize(name, input, result) };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     // Structured E_* errors go back to the model verbatim — they self-repair.
     return { result: { error: message }, isError: true, summary: preview(message, 120) };
   }
+}
+
+/**
+ * Is a stored delivery token still accepted upstream? A revoked token answers
+ * 401 on ANY path; a live one answers 404/200 on a nonsense collection. On
+ * network trouble assume alive — minting would fail on the same network.
+ */
+async function deliveryTokenAlive(token: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${DELIVERY_BASE()}/__token_check`, {
+      headers: { authorization: `Bearer ${token}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(5_000),
+    });
+    return res.status !== 401 && res.status !== 403;
+  } catch {
+    return true;
+  }
+}
+
+/** Compress one probe response into what the model needs: status, count, real fields. */
+function probeSummary(path: string, status: number, parsed: unknown, rawText: string): Record<string, unknown> {
+  const flatten = (v: unknown): Record<string, unknown> => {
+    if (!v || typeof v !== "object") return {};
+    const rec = v as Record<string, unknown>;
+    if (rec.data && typeof rec.data === "object") {
+      const { data, ...rest } = rec;
+      return { ...rest, ...(data as Record<string, unknown>) };
+    }
+    return rec;
+  };
+  const out: Record<string, unknown> = { path, status };
+  const arr = Array.isArray(parsed)
+    ? parsed
+    : parsed && typeof parsed === "object"
+      ? (["items", "entries", "data", "results"]
+          .map((k) => (parsed as Record<string, unknown>)[k])
+          .find(Array.isArray) as unknown[] | undefined)
+      : undefined;
+  if (arr) {
+    out.count = arr.length;
+    const fields = arr.length ? Object.keys(flatten(arr[0])).filter((k) => flatten(arr[0])[k] !== undefined) : [];
+    out.fields = fields.slice(0, 24);
+    if (arr.length) out.sample = JSON.stringify(arr[0]).slice(0, 300);
+    if (status === 200 && arr.length > 0 && fields.length <= 2) {
+      out.warning =
+        "rows arrive nearly EMPTY — publicRead projection problem. Fix the collection's publicRead flags (exact-merge redefine), not the client.";
+    }
+    if (status === 200 && arr.length === 0) out.note = "no rows — seed data, or check filters/access rules";
+  } else if (parsed && typeof parsed === "object") {
+    out.fields = Object.keys(parsed as object).slice(0, 24);
+    out.sample = JSON.stringify(parsed).slice(0, 300);
+  } else {
+    out.sample = rawText.slice(0, 200);
+  }
+  if (status >= 400) out.warning = `HTTP ${status} — read the body; E_* errors state their own fix.`;
+  return out;
 }
 
 function summarize(name: string, input: Record<string, unknown>, result: unknown): string {

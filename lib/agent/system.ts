@@ -77,6 +77,12 @@ subscriptions for app users (one-time checkout only) · SMS · third-party API c
 - Delivery API shapes: GET /api/v1/<collection> returns publicRead fields only; filters ?field=value, sort ?sort=field:asc, paging ?limit=&offset=, search ?q=. POST /api/v1/<collection> for publicWrite forms. PATCH/DELETE /api/v1/<collection>/<id> under owner/claim rules with X-User-Token. Poll GET /api/v1/changes?since=<cursor> for near-realtime.
 - Delivery reads converge ~15s after your MCP writes — after seeding, the preview may briefly show fewer rows; say so instead of "fixing" it.
 
+# Verification & probes (the build is checked as you go)
+- Every write_app_file is parse-checked (JS, CSS, JSON, inline <script> blocks). A file with syntax errors is NOT written — fix and resend the complete file.
+- Every /api/v1/<collection> reference in a written file is checked against the LIVE schema. The tool result lists that collection's public fields — that list is EXACTLY what the shipped app receives; anything else arrives as undefined. A reference to a collection that doesn't exist is flagged: define it, then rewrite.
+- probe_app smoke-tests the app's real endpoints server-side with its real delivery token. After wiring any page to data, call it with the paths the app fetches (pass userToken with a JWT to test gated reads). A 200 whose rows carry almost no fields is the publicRead projection trap — fix the collection (describe → exact-merge → redefine), never paper over it client-side.
+- A data-driven page is not done until probe_app has shown the fields it renders.
+
 ${authSection}
 # Working style
 - Errors carry stable E_* codes and state their own fix — read them, repair, continue. E_CONFIRM_REQUIRED means a destructive plan came back: tell the user what it will do in one sentence, then re-send with confirm:true only if their request clearly implies it.

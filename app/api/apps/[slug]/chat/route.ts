@@ -4,6 +4,8 @@
  */
 import { NextRequest } from "next/server";
 import { runBuilder } from "@/lib/agent/builder";
+import { isModelPin } from "@/lib/agent/models";
+import { getApp, updateApp } from "@/lib/apps/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,12 +15,18 @@ const running = new Set<string>();
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: string }> }) {
   const { slug } = await ctx.params;
-  const { message } = (await req.json().catch(() => ({}))) as { message?: string };
+  const { message, model } = (await req.json().catch(() => ({}))) as { message?: string; model?: string };
   if (!message?.trim()) {
     return Response.json({ error: "message required" }, { status: 400 });
   }
   if (running.has(slug)) {
     return Response.json({ error: "The builder is already working on this app — wait for it to finish." }, { status: 409 });
+  }
+  // Persist the studio's model selector with the message it applies to —
+  // the builder reads it back off the app record.
+  const app = getApp(slug);
+  if (app && isModelPin(model) && (app.modelPin ?? "auto") !== model) {
+    updateApp(slug, { modelPin: model });
   }
   running.add(slug);
 

@@ -4,6 +4,7 @@
  */
 
 export type AgentEvent =
+  | { type: "route"; route: string; model: string; why: string } // model-tier decision for this turn (P0.1)
   | { type: "thinking" } // the model is reasoning before it speaks/acts (Fable thinks by default)
   | { type: "text_delta"; text: string }
   | { type: "tool_start"; name: string; label: string }

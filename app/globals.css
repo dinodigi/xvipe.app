@@ -97,8 +97,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .inrow textarea::placeholder { color: var(--faint); }
 .send { width: 30px; height: 30px; border-radius: 8px; background: var(--coral); color: var(--coral-ink); font-weight: 800; flex: none; }
 .send:hover { background: var(--coral-hot); } .send:disabled { opacity: 0.45; cursor: not-allowed; }
-.composer .hint { display: flex; gap: 10px; margin-top: 7px; font: 10.5px var(--mono); color: var(--faint); }
+.composer .hint { display: flex; gap: 10px; margin-top: 7px; font: 10.5px var(--mono); color: var(--faint); align-items: center; }
 .composer .hint .r { margin-left: auto; }
+.modelsel { background: #00000030; border: 1px solid var(--line); border-radius: 7px; color: var(--mute); font: 10.5px var(--mono); padding: 2px 5px; cursor: pointer; transition: border-color 0.14s, color 0.14s; }
+.modelsel:hover, .modelsel:focus-visible { border-color: var(--coral); color: var(--ink); outline: none; }
+.modelsel option { background: var(--panel, #16151d); color: var(--ink); }
 
 .divider { width: 5px; flex: none; cursor: col-resize; position: relative; background: transparent; }
 .divider::after { content: ""; position: absolute; inset: 0 2px; background: transparent; transition: background 0.15s; }

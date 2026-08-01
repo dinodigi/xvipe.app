@@ -9,8 +9,7 @@
  */
 import { NextRequest } from "next/server";
 import { getApp, getDeliveryToken } from "@/lib/apps/store";
-
-const DELIVERY_BASE = () => process.env.PLUGGIE_DELIVERY_BASE ?? "https://pluggie.app/api/v1";
+import { DELIVERY_BASE } from "@/lib/pluggie/delivery";
 
 /** request headers forwarded upstream (allowlist — cookies etc. never cross) */
 const FORWARD_REQUEST = ["content-type", "if-none-match", "x-user-token", "accept"];

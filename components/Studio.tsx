@@ -77,6 +77,7 @@ export function Studio(props: {
   const [busy, setBusy] = useState(false);
   const [input, setInput] = useState("");
   const [lastUsage, setLastUsage] = useState<TurnUsage | null>(null);
+  const [modelPin, setModelPin] = useState<string>(app.modelPin ?? "auto");
   const msgsRef = useRef<HTMLDivElement>(null);
 
   /* files / code */
@@ -251,7 +252,15 @@ export function Studio(props: {
           const dropReasoning = () => {
             cur.items = cur.items.filter((it) => !(it.kind === "step" && it.name === "__thinking"));
           };
-          if (ev.type === "thinking") {
+          if (ev.type === "route") {
+            cur.items.push({
+              kind: "step",
+              name: "__route",
+              label: `${ev.route} → ${ev.model.replace("claude-", "")}`,
+              state: "ok",
+              summary: ev.why,
+            });
+          } else if (ev.type === "thinking") {
             const last = cur.items[cur.items.length - 1];
             if (!(last?.kind === "step" && last.name === "__thinking"))
               cur.items.push({ kind: "step", name: "__thinking", label: "reasoning", state: "wait" });
@@ -281,7 +290,7 @@ export function Studio(props: {
         const res = await fetch(`/api/apps/${app.slug}/chat`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ message }),
+          body: JSON.stringify({ message, model: modelPin }),
         });
         if (!res.ok || !res.body) {
           const err = (await res.json().catch(() => ({}))) as { error?: string };
@@ -324,7 +333,7 @@ export function Studio(props: {
         bumpPreview();
       }
     },
-    [app.slug, busy, refreshFiles, bumpPreview],
+    [app.slug, busy, modelPin, refreshFiles, bumpPreview],
   );
 
   /* ── code viewer ── */
@@ -594,6 +603,18 @@ export function Studio(props: {
               </button>
             </div>
             <div className="hint">
+              <select
+                className="modelsel"
+                aria-label="Builder model"
+                title="Auto lets the router pick per request: questions and small edits ride the fast tier, feature work gets the strong tier."
+                value={modelPin}
+                onChange={(e) => setModelPin(e.target.value)}
+              >
+                <option value="auto">Model: Auto</option>
+                <option value="haiku">Fast · Haiku</option>
+                <option value="sonnet">Strong · Sonnet</option>
+                <option value="opus">Max · Opus</option>
+              </select>
               <span>↵ send · shift+↵ newline · ⌘K commands</span>
               {lastUsage && (
                 <span className="r">

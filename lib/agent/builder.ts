@@ -11,12 +11,15 @@ import { getPluggieToken } from "@/lib/pluggie/token";
 import { getProjectInfo } from "@/lib/pluggie/mcp";
 import { buildSystemPrompt } from "@/lib/agent/system";
 import { dispatchTool, getAgentTools } from "@/lib/agent/tools";
+import { MODELS, isModelPin, routeRequest, type RouteDecision } from "@/lib/agent/models";
+import { createBuildContext } from "@/lib/agent/verify";
 import type { AgentEvent, TurnUsage } from "@/lib/agent/events";
-import { appendTranscript, getApp, loadConversation, saveConversation } from "@/lib/apps/store";
+import { appendTranscript, getApp, loadConversation, saveConversation, wsList } from "@/lib/apps/store";
 
-// Cheapest current model by default — the operator opts UP via BUILDER_MODEL,
-// never gets surprise-billed down. (claude-fable-5 burned real credits here.)
-const MODEL = process.env.BUILDER_MODEL ?? "claude-haiku-4-5";
+// P0.1 model policy: the router picks the tier per request (Haiku for
+// questions/edits, Sonnet for builds); the studio selector pins per app.
+// XVIBE_FORCE_MODEL is the operator's cost-emergency override of everything.
+const FORCED_MODEL = process.env.XVIBE_FORCE_MODEL?.trim();
 const MAX_ROUNDS = 40;
 const MAX_TURNS_KEPT = 80;
 
@@ -30,6 +33,7 @@ const toolLabel = (name: string, input: Record<string, unknown>): string => {
     case "read_app_file":
     case "delete_app_file": return `${name} ${input.path ?? ""}`;
     case "enable_plugin": return `enable_plugin ${input.id ?? input.name ?? ""}`;
+    case "probe_app": return `probe_app · ${Array.isArray(input.paths) ? input.paths.length : 0} endpoint(s)`;
     default: return name;
   }
 };
@@ -66,23 +70,39 @@ export async function* runBuilder(slug: string, userMessage: string): AsyncGener
     return;
   }
 
-  // Orient every session (CONNECTION.md §2) + read the LIVE tool surface.
-  const [info, tools] = await Promise.all([getProjectInfo(mcpToken), getAgentTools(mcpToken)]);
-  const system = buildSystemPrompt(app, info);
-
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY.trim() });
+
+  // Route FIRST (cheap, parallel with orientation): which tier does this
+  // message deserve? Pin > forced-env > auto-router.
+  const pin = isModelPin(app.modelPin) ? app.modelPin : "auto";
+  const decide = async (): Promise<RouteDecision> => {
+    if (FORCED_MODEL) return { route: "forced", model: FORCED_MODEL, why: "XVIBE_FORCE_MODEL is set" };
+    if (pin !== "auto") return { route: "pinned", model: MODELS[pin], why: `pinned to ${pin} in the studio` };
+    return routeRequest(anthropic, userMessage, wsList(slug).length);
+  };
+
+  // Orient every session (CONNECTION.md §2) + read the LIVE tool surface.
+  const [info, tools, decision] = await Promise.all([getProjectInfo(mcpToken), getAgentTools(mcpToken), decide()]);
+  const system = buildSystemPrompt(app, info);
+  const model = decision.model;
+  yield { type: "route", route: decision.route, model, why: decision.why };
+  appendTranscript(slug, { kind: "system", text: `route: ${decision.route} → ${model} (${decision.why})` });
+
   let messages = [...(loadConversation(slug) as MessageParam[]), { role: "user" as const, content: userMessage }];
   appendTranscript(slug, { kind: "user", text: userMessage });
 
+  // Per-turn caches for the verification layer (collection facts).
+  const buildCtx = createBuildContext();
+
   // Every build reports what it spent — nobody discovers a drained balance
   // from a 400 again. Totals accumulate across all rounds of this turn.
-  const usage: TurnUsage = { model: MODEL, rounds: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+  const usage: TurnUsage = { model, rounds: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
 
   try {
     for (let round = 0; round < MAX_ROUNDS; round++) {
       messages = trimConversation(messages);
       const stream = anthropic.messages.stream({
-        model: MODEL,
+        model,
         max_tokens: 16000,
         // Prompt caching: the marker on the system block caches tools+system
         // (they render first), so every loop round re-reads the big stable
@@ -130,7 +150,7 @@ export async function* runBuilder(slug: string, userMessage: string): AsyncGener
         const input = (use.input ?? {}) as Record<string, unknown>;
         const label = toolLabel(use.name, input);
         yield { type: "tool_start", name: use.name, label };
-        const outcome = await dispatchTool(slug, mcpToken, use.name, input);
+        const outcome = await dispatchTool(slug, mcpToken, use.name, input, buildCtx);
         appendTranscript(slug, { kind: "tool", tool: { name: use.name, summary: outcome.summary, ok: !outcome.isError } });
         if (outcome.filesChanged) changed.push(...outcome.filesChanged);
         yield { type: "tool_done", name: use.name, label, ok: !outcome.isError, summary: outcome.summary };
