@@ -14,11 +14,27 @@ const RESERVED = new Set(["www", "studio", "api", "admin", "mail"]);
 
 export function middleware(req: NextRequest) {
   const host = req.headers.get("host") ?? "";
-  const appsDomain = process.env.XVIBE_APPS_BASE_DOMAIN ?? "xvibe.app";
+
+  /**
+   * Two app-serving domains, both host-rewritten here:
+   *  - the PUBLISHED domain (XVIBE_APPS_BASE_DOMAIN) — normally served by the
+   *    edge worker from R2, but this origin must still answer for it when the
+   *    worker is bypassed or not yet routed.
+   *  - the PREVIEW domain (XVIBE_PREVIEW_BASE_DOMAIN) — always this origin,
+   *    serving the LIVE workspace so the studio shows the agent's edits as
+   *    they happen rather than the last published snapshot.
+   */
+  const domains = [process.env.XVIBE_APPS_BASE_DOMAIN, process.env.XVIBE_PREVIEW_BASE_DOMAIN]
+    .filter((d): d is string => Boolean(d))
+    .map((d) => d.replace(/\./g, "\\."));
+  if (domains.length === 0) domains.push("xvibe\\.app");
 
   const m =
     host.match(/^([a-z0-9-]+)\.localhost(?::\d+)?$/) ??
-    host.match(new RegExp(`^([a-z0-9-]+)\\.${appsDomain.replace(/\./g, "\\.")}(?::\\d+)?$`));
+    domains.reduce<RegExpMatchArray | null>(
+      (hit, d) => hit ?? host.match(new RegExp(`^([a-z0-9-]+)\\.${d}(?::\\d+)?$`)),
+      null,
+    );
 
   if (m && !RESERVED.has(m[1])) {
     // Built-app traffic: public by design, never gated.

@@ -66,7 +66,10 @@ export function Studio(props: {
   dbStatus: string;
   attention: string[];
   endUserAuth: boolean;
+  /** where PUBLISHED apps live (edge/R2) — used for the publish result + status bar */
   appsDomain?: string;
+  /** where the LIVE workspace is served — the preview must show unpublished edits */
+  previewDomain?: string;
   initialTranscript: TranscriptEvent[];
   initialFiles: WsFile[];
 }) {
@@ -128,18 +131,22 @@ export function Studio(props: {
     msgsRef.current?.scrollTo({ top: msgsRef.current.scrollHeight });
   }, [blocks]);
 
+  // The preview deliberately uses the PREVIEW domain, not the published one:
+  // published apps are served by the edge from the last R2 snapshot, so
+  // pointing the iframe there would hide the agent's edits until publish.
+  const previewDomain = props.previewDomain ?? props.appsDomain;
   const previewUrl = origin
     ? origin.isLocal
       ? `${origin.protocol}//${app.slug}.localhost${origin.port ? `:${origin.port}` : ""}/`
-      : props.appsDomain
-        ? `https://${app.slug}.${props.appsDomain}/`
+      : previewDomain
+        ? `https://${app.slug}.${previewDomain}/`
         : `/apps/${app.slug}/`
     : undefined;
   // The address bar shows the host the iframe is ACTUALLY loading.
   const previewHost = origin?.isLocal
     ? `${app.slug}.localhost${origin.port ? `:${origin.port}` : ""}`
-    : props.appsDomain
-      ? `${app.slug}.${props.appsDomain}`
+    : previewDomain
+      ? `${app.slug}.${previewDomain}`
       : `/apps/${app.slug}/`;
 
   /* ── data fetchers ── */

@@ -56,6 +56,7 @@ export default async function StudioPage({
         attention={attention}
         endUserAuth={Boolean(info.endUserAuth?.configured)}
         appsDomain={process.env.XVIBE_APPS_BASE_DOMAIN}
+        previewDomain={process.env.XVIBE_PREVIEW_BASE_DOMAIN ?? process.env.XVIBE_APPS_BASE_DOMAIN}
         initialTranscript={transcript}
         initialFiles={files}
       />

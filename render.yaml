@@ -43,9 +43,16 @@ services:
       # Gate the studio — builds spend the API key. Pick any strong passphrase.
       - key: STUDIO_ACCESS_KEY
         sync: false
-      # Apps live at <slug>.<this domain> — set to the apex (xvibe.app) once
-      # the *.xvibe.app wildcard custom domain + DNS records are verified.
+      # PUBLISHED apps: <slug>.<this domain>, served by the Cloudflare edge
+      # worker from R2. Set to xvibe.app once the proxied *.xvibe.app wildcard
+      # is in place (it is, as of 2026-08-01).
       - key: XVIBE_APPS_BASE_DOMAIN
+        sync: false
+      # LIVE preview: <slug>.<this domain>, served by THIS host from the app's
+      # working directory. Keep it on apps.xvibe.app (DNS-only → Render) so the
+      # studio preview shows unpublished edits. Without it the preview would
+      # point at the edge and show only the last published snapshot.
+      - key: XVIBE_PREVIEW_BASE_DOMAIN
         sync: false
       # Edge serving (docs/CLOUDFLARE.md). With these set, publishing mirrors
       # each app's delivery token into the Worker's KV namespace, which is
