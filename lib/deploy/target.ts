@@ -16,8 +16,9 @@
  */
 import { cpSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { deploysDir, getApp, updateApp, wsDir, wsList } from "@/lib/apps/store";
+import { deploysDir, getApp, getDeliveryToken, updateApp, wsDir, wsList } from "@/lib/apps/store";
 import { r2Configured, uploadBundle } from "@/lib/deploy/r2";
+import { kvConfigured, syncDeliveryToken } from "@/lib/deploy/kv";
 
 export interface DeployResult {
   url: string;
@@ -73,6 +74,16 @@ export async function deployApp(slug: string, studioOrigin: string): Promise<Dep
     }
   } else {
     note += " R2 offload inactive (no R2_* credentials).";
+  }
+
+  // Publishing is also when the edge's token copy heals: an app minted before
+  // the worker existed gets its credential mirrored on its next deploy.
+  if (kvConfigured()) {
+    const token = getDeliveryToken(slug);
+    if (token) {
+      const kv = await syncDeliveryToken(slug, token);
+      if (!kv.ok) note += ` Edge token sync FAILED: ${kv.error} — the app will answer 503 on /api/v1 at the edge.`;
+    }
   }
 
   return { url, version, target, files: files.length, bytes, note };

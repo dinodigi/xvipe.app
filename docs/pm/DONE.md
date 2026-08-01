@@ -1,5 +1,25 @@
 # Shipped & verified
 
+## 2026-07-31 (night) — edge serving prep, no model spend
+- **`npm run evals:reset`** wraps the shipped `reset_project` (our 07-30 wall
+  ask came back as OPS-6). Plan-only by default, `--wipe` to execute; never
+  part of a sweep — it wipes hand-built apps too. GAP-MAP now tracks wall
+  asks that shipped.
+- **Edge worker written + tested** (`workers/edge/`): serves published bundles
+  from R2 via `current.json`, SPA fallback, immutable assets + revalidated
+  HTML + 304s, and proxies `/api/v1` with the delivery token injected at the
+  edge (cookies stripped, end-user JWT passed through). Apex/`www`/reserved
+  labels pass through to the studio. **15/15 behaviour tests**
+  (`node workers/edge/test.mjs`) with stubbed R2/KV — no zone needed.
+- **Edge token custody** (`lib/deploy/kv.ts`): tokens mirrored to a Workers KV
+  namespace on mint and re-mirrored on every publish (older apps heal on next
+  deploy). R2 holds public bytes, KV holds the credential — deliberately
+  separate. No-ops until `CF_*` env vars exist, so today's serving is
+  unchanged.
+- **`docs/CLOUDFLARE.md`**: the CF-1 nameserver move (with a pre-save record
+  checklist — a missed record here is downtime), the `*.xvibe.app` wildcard,
+  and the worker deploy + rollout check.
+
 ## 2026-07-31 (evening) — #14 eval harness
 - **Eval harness v1 shipped** (`evals/`, `npm run evals`): 12 golden build
   tasks (4 core) with **mechanical** assertions — shipped files, live schema,

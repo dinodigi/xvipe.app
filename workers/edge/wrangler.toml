@@ -1,0 +1,32 @@
+# XVibe edge worker — serves published apps from R2, proxies their data calls.
+#
+# Deploy (from workers/edge/):
+#   npx wrangler kv namespace create XVIBE_TOKENS
+#   # paste the returned id below, then:
+#   npx wrangler deploy
+#
+# Prerequisite: the xvibe.app zone must be on Cloudflare (CF-1 on the board) —
+# routes below cannot attach to a zone Cloudflare does not host.
+name = "xvibe-edge"
+main = "src/worker.js"
+compatibility_date = "2026-07-01"
+
+# Every app subdomain. The apex and reserved labels fall through to the
+# studio origin (the worker returns fetch(request) untouched for those).
+routes = [{ pattern = "*.xvibe.app/*", zone_name = "xvibe.app" }]
+
+[vars]
+XVIBE_APPS_BASE_DOMAIN = "xvibe.app"
+PLUGGIE_DELIVERY_BASE = "https://pluggie.app/api/v1"
+
+# Published bundles: <slug>/current.json + <slug>/v<N>/<file...>
+[[r2_buckets]]
+binding = "BUNDLES"
+bucket_name = "xvibe-apps"
+
+# Delivery-token custody at the edge. Written by the studio (lib/deploy/kv.ts)
+# when the builder mints a token; read only by this worker. Never a bundle
+# object — R2 holds public bytes, KV holds the credential.
+[[kv_namespaces]]
+binding = "TOKENS"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"

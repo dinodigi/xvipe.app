@@ -7,11 +7,14 @@
 ## Next up (queued, in order — Cloudflare route decided 07-31)
 1. **#15 Claude Agent SDK spike** — embed the Claude Code harness; go/no-go
    on error rate + cost.
-2. **CF-1: move xvibe.app zone to Cloudflare** (⚑ operator-assisted:
+2. **CF-1: move xvibe.app zone to Cloudflare** — ⚑ **operator step, written
+   up in `docs/CLOUDFLARE.md`** (nameserver flip at Namecheap; CF imports the
+   records — verify apex/www/wildcard before saving). Unblocks #10/#18/#17:
    nameserver flip at Namecheap; CF auto-imports records) — prerequisite for
    edge serving + Workers routing.
-3. **#10 Edge serving worker** — apps served from R2 at the edge + token-
-   injecting /api/v1 proxy in the worker; Render leaves the app-serving path.
+3. **#10 Edge serving worker** — **code written + tested 07-31**
+   (`workers/edge/`, 15/15 behaviour tests). Waiting only on CF-1, then one
+   `wrangler deploy` + 3 env vars. Steps: `docs/CLOUDFLARE.md`.
 4. **#18 Custom domains** (Cloudflare for SaaS custom hostnames) — user
    CNAMEs their domain, CF issues/renews certs, edge worker maps hostname →
    app; Domains tool in the studio. The flagship paid-tier anchor.

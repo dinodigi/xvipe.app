@@ -13,6 +13,7 @@
  */
 import { callTool, listTools } from "@/lib/pluggie/mcp";
 import { DELIVERY_BASE } from "@/lib/pluggie/delivery";
+import { syncDeliveryToken } from "@/lib/deploy/kv";
 import { createBuildContext, verifyAppFile, type BuildContext } from "@/lib/agent/verify";
 import {
   getApp,
@@ -326,12 +327,15 @@ export async function dispatchTool(
       const raw = minted.token ?? minted.value;
       if (!raw) return { result: minted, isError: true, summary: "mint returned no token" };
       setDeliveryToken(slug, raw, String(input.label ?? "xvibe app"));
+      // Mirror to the edge when the worker is live; a no-op until then.
+      const kv = await syncDeliveryToken(slug, raw);
       return {
         result: {
           ok: true,
           label: input.label,
           project: minted.project ?? undefined,
           ...(existing ? { note: "The previously stored token was dead (revoked upstream) — replaced with this fresh one." } : {}),
+          ...(kv.ok ? {} : { edgeSync: `Token stored, but the edge copy failed (${kv.error}) — publishing retries it.` }),
           token: "<redacted — stored by XVibe at the serving edge; the app calls /api/v1 with no credential>",
         },
         isError: false,

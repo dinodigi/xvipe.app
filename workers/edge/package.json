@@ -1,0 +1,6 @@
+{
+  "name": "xvibe-edge",
+  "private": true,
+  "type": "module",
+  "description": "XVibe edge worker — serves published bundles from R2 and injects delivery tokens for /api/v1. Deployed with wrangler, not part of the studio build."
+}
