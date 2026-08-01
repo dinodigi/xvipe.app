@@ -250,20 +250,34 @@ export async function* runBuilder(slug: string, userMessage: string): AsyncGener
         return;
       }
 
+      // Claude issues independent tool calls in one round on purpose (writing
+      // index.html + app.css + app.js together is the common case). Running
+      // them concurrently turns that round from N round-trips into one —
+      // each write also costs a schema lookup for the API-lint, so the saving
+      // is real. Results still go back in ONE user message, in the original
+      // order, which is what keeps the model issuing parallel calls at all.
+      const calls = toolUses.map((use) => ({
+        use,
+        input: (use.input ?? {}) as Record<string, unknown>,
+        label: toolLabel(use.name, (use.input ?? {}) as Record<string, unknown>),
+      }));
+      for (const c of calls) yield { type: "tool_start", name: c.use.name, label: c.label };
+
+      const outcomes = await Promise.all(
+        calls.map((c) => dispatchTool(slug, mcpToken, c.use.name, c.input, buildCtx)),
+      );
+
       const results: ContentBlockParam[] = [];
       const changed: string[] = [];
-      for (const use of toolUses) {
-        const input = (use.input ?? {}) as Record<string, unknown>;
-        const label = toolLabel(use.name, input);
-        yield { type: "tool_start", name: use.name, label };
-        const outcome = await dispatchTool(slug, mcpToken, use.name, input, buildCtx);
-        if (!outcome.isError && TOUCHING_TOOLS.has(use.name)) touchedApp = true;
-        appendTranscript(slug, { kind: "tool", tool: { name: use.name, summary: outcome.summary, ok: !outcome.isError } });
+      for (const [i, c] of calls.entries()) {
+        const outcome = outcomes[i];
+        if (!outcome.isError && TOUCHING_TOOLS.has(c.use.name)) touchedApp = true;
+        appendTranscript(slug, { kind: "tool", tool: { name: c.use.name, summary: outcome.summary, ok: !outcome.isError } });
         if (outcome.filesChanged) changed.push(...outcome.filesChanged);
-        yield { type: "tool_done", name: use.name, label, ok: !outcome.isError, summary: outcome.summary };
+        yield { type: "tool_done", name: c.use.name, label: c.label, ok: !outcome.isError, summary: outcome.summary };
         results.push({
           type: "tool_result",
-          tool_use_id: use.id,
+          tool_use_id: c.use.id,
           content: typeof outcome.result === "string" ? outcome.result : JSON.stringify(outcome.result),
           is_error: outcome.isError,
         });

@@ -1,5 +1,28 @@
 # Shipped & verified
 
+## 2026-08-01 — #19 closed: kept our loop, shipped the parts that pay
+- **Step 2 (port the loop to `tool_runner`) deliberately NOT done.** Read the
+  installed runner's real type surface first: `betaTool()` wants const-literal
+  JSON Schemas for inference, but ours come from the live MCP surface at
+  runtime; and the runner owns tool execution while our SSE UX owns event
+  timing (`tool_start` before a call, `tool_done` carrying our summary and
+  filesChanged), so a port would need an event queue and would land
+  `tool_done` a beat late. Meanwhile the prize — context management — turned
+  out to be plain request parameters and shipped in step 1 without the runner.
+  What's left (approval gating) is an `if` in `dispatchTool`, which we own.
+  Reasoning recorded in docs/AGENT-SDK-SPIKE.md so it isn't re-litigated.
+- **Shipped instead: concurrent tool execution within a round.** Claude issues
+  independent calls together by design (writing index.html + app.css + app.js
+  is the common case, and each write also costs a schema lookup for the
+  API-lint). Results still return in ONE user message in original order —
+  which is what keeps the model making parallel calls at all.
+- **Schema cache now stores in-flight promises**, so concurrent writes hitting
+  the same collection share one `describe_collection` rather than racing to
+  duplicate it; transient failures are evicted rather than cached, so one
+  hiccup can't poison a turn.
+- Guestbook eval: 11/11 in 60s / 10 rounds (was 67s / 11 rounds). **Not
+  claimed as a speedup** — different round count, one sample.
+
 ## 2026-08-01 — SHORT URLs LIVE: apps at `<slug>.xvibe.app`
 - **Proxied `*` wildcard on Cloudflare Free** — the open question from the
   worker design is answered: the Free plan proxies wildcards with no

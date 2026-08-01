@@ -22,9 +22,14 @@ export interface CollectionFacts {
   publicFields: string[] | null;
 }
 
-/** Per-build-turn cache so N files referencing one collection cost one describe. */
+/**
+ * Per-build-turn cache so N files referencing one collection cost one describe.
+ * Stores the in-flight PROMISE, not the resolved value: tool calls in a round
+ * run concurrently, so several files can ask about the same collection at
+ * once and must share a single request rather than racing to duplicate it.
+ */
 export interface BuildContext {
-  collections: Map<string, CollectionFacts>;
+  collections: Map<string, Promise<CollectionFacts | undefined>>;
 }
 export const createBuildContext = (): BuildContext => ({ collections: new Map() });
 
@@ -107,6 +112,16 @@ async function parseCheck(label: string, code: string, loader: "js" | "css"): Pr
 async function collectionFacts(name: string, mcpToken: string, ctx: BuildContext): Promise<CollectionFacts | undefined> {
   const cached = ctx.collections.get(name);
   if (cached) return cached;
+  const inFlight = describeOnce(name, mcpToken);
+  ctx.collections.set(name, inFlight);
+  const facts = await inFlight;
+  // A transient failure must not poison the rest of the turn — only a real
+  // answer (exists / does not exist) is worth remembering.
+  if (!facts) ctx.collections.delete(name);
+  return facts;
+}
+
+async function describeOnce(name: string, mcpToken: string): Promise<CollectionFacts | undefined> {
   try {
     const desc = await callTool<Record<string, unknown>>("describe_collection", { name }, mcpToken);
     const coll = (desc.collection && typeof desc.collection === "object" ? desc.collection : desc) as Record<string, unknown>;
@@ -117,16 +132,12 @@ async function collectionFacts(name: string, mcpToken: string, ctx: BuildContext
           .map((f) => String((f as { name?: unknown }).name ?? ""))
           .filter(Boolean)
       : null;
-    const facts: CollectionFacts = { exists: true, publicFields };
-    ctx.collections.set(name, facts);
-    return facts;
+    return { exists: true, publicFields };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     const code = (e as { code?: string }).code ?? "";
     if (/NOT_FOUND/i.test(code) || /not[ _-]?found|unknown collection|no such|does not exist/i.test(msg)) {
-      const facts: CollectionFacts = { exists: false, publicFields: null };
-      ctx.collections.set(name, facts);
-      return facts;
+      return { exists: false, publicFields: null };
     }
     return undefined; // infra hiccup — never block a build on lint plumbing
   }

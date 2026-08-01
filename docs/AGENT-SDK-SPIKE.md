@@ -64,6 +64,50 @@ Runner, on the SDK we already ship:
 agent's reachable capability set stays exactly the 50 Pluggie tools + our
 workspace tools, enforced by absence rather than by policy.
 
+## Follow-up 2026-08-01: step 2 (move the loop onto `tool_runner`) — NOT DONE, deliberately
+
+Step 1 shipped. Before rewriting the loop, I read the installed runner's actual
+type surface (`lib/tools/BetaToolRunner.d.ts`, `helpers/beta/json-schema.d.ts`)
+rather than the prose. Two things it revealed, plus one that step 1 already
+settled:
+
+1. **`betaTool()` wants const-literal JSON Schemas.** Its signature is
+   `<const Schema extends JSONSchema>` so it can infer argument types via
+   `FromSchema`. Our tool schemas are read from the LIVE MCP surface at session
+   start — runtime `Record<string, unknown>` values. The inference that makes
+   the helper pleasant is unusable for us; every tool would be a cast.
+2. **The runner owns tool execution, and our SSE UX owns event timing.** The
+   studio streams `tool_start` *before* a call runs and `tool_done` carrying
+   our own `summary` / `filesChanged`. Those come from inside `dispatchTool`,
+   which the runner would invoke from its own callbacks — so a generator
+   yielding events would need a queue to marshal them out, and `tool_done`
+   would land a beat late. We would be trading precise, working UX for loop
+   code we already have.
+3. **The prize was already claimed without it.** Context management —
+   the biggest item on the "why Claude Code errs less" list — turned out to be
+   plain request parameters (step 1). It never needed the runner.
+
+What remains is per-call approval gating, and that is an `if` statement in
+`dispatchTool`, which we own outright. **Verdict: keep our loop.** The spike's
+value was real, but it was steps 1 and the boundary correction, not the port.
+
+### Shipped instead (same session)
+
+- **Concurrent tool execution within a round.** Claude issues independent calls
+  together on purpose — writing `index.html` + `app.css` + `app.js` in one
+  round is the common case, and each write also costs a schema lookup for the
+  API-lint. Results still return in ONE user message in original order, which
+  is what keeps the model making parallel calls at all.
+- **The schema cache now stores in-flight promises, not resolved values**, so
+  concurrent writes referencing the same collection share a single
+  `describe_collection` instead of racing to duplicate it. Transient failures
+  are evicted rather than cached, so one hiccup cannot poison a whole turn.
+
+Measured: the guestbook eval passed 11/11 in 60s / 10 rounds versus 67s / 11
+rounds before. **Not a claimed speedup** — the round count differs, so that is
+one noisy sample, not a benchmark. The change is correct regardless and cannot
+be slower.
+
 ## Recommendation
 
 1. **Drop the Agent SDK migration** from the roadmap. Record the reason so it
