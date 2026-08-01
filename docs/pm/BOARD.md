@@ -23,7 +23,9 @@
    app; Domains tool in the studio. The flagship paid-tier anchor.
 8. **#17 Workers-for-Platforms functions** — per-app server code on rented
    isolates, behind `xvibe/runtime` shim + `RuntimeTarget` (exit insurance in
-   AGENT-PLAN §4). Gated on #12 kill-switch + cost caps.
+   AGENT-PLAN §4). Includes the one XVibe-owned secrets store: per-app
+   per-env function env-vars (write-only, encrypted, bound at deploy via the
+   shim). Gated on #12 kill-switch + cost caps.
 9. **#16 Planning layer + task trees** — PRD builder → per-app backlog →
    agent-assisted sprints (agent proposes scope, splits into tasks,
    predicts footprint collisions, parallelizes disjoint work); parallel
