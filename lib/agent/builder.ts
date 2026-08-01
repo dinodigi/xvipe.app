@@ -13,6 +13,7 @@ import { buildSystemPrompt } from "@/lib/agent/system";
 import { dispatchTool, getAgentTools } from "@/lib/agent/tools";
 import { MODELS, isModelPin, routeRequest, type RouteDecision } from "@/lib/agent/models";
 import { createBuildContext } from "@/lib/agent/verify";
+import { reviewBuild } from "@/lib/agent/reviewer";
 import type { AgentEvent, TurnUsage } from "@/lib/agent/events";
 import { appendTranscript, getApp, loadConversation, saveConversation, wsList } from "@/lib/apps/store";
 
@@ -94,6 +95,13 @@ export async function* runBuilder(slug: string, userMessage: string): AsyncGener
   // Per-turn caches for the verification layer (collection facts).
   const buildCtx = createBuildContext();
 
+  // Fresh-eyes review state (P0.4): runs once per turn, after the builder
+  // stops, if the turn actually touched the app. Findings buy exactly ONE
+  // repair round — never a loop.
+  let touchedApp = false;
+  let reviewSpent = false;
+  const TOUCHING_TOOLS = new Set(["write_app_file", "delete_app_file", "define_collection", "define_schedule", "define_block"]);
+
   // Every build reports what it spent — nobody discovers a drained balance
   // from a 400 again. Totals accumulate across all rounds of this turn.
   const usage: TurnUsage = { model, rounds: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
@@ -138,6 +146,35 @@ export async function* runBuilder(slug: string, userMessage: string): AsyncGener
 
       const toolUses = final.content.filter((b) => b.type === "tool_use");
       if (final.stop_reason !== "tool_use" || toolUses.length === 0) {
+        // The builder is done — fresh-eyes review before we call it a turn.
+        if (touchedApp && !reviewSpent && decision.route !== "question") {
+          reviewSpent = true;
+          yield { type: "tool_start", name: "review", label: "fresh-eyes review" };
+          try {
+            const rev = await reviewBuild(anthropic, slug, app.name, mcpToken, info);
+            usage.rounds += 1;
+            usage.inputTokens += rev.usage.inputTokens;
+            usage.outputTokens += rev.usage.outputTokens;
+            usage.cacheReadTokens += rev.usage.cacheReadTokens;
+            usage.cacheWriteTokens += rev.usage.cacheWriteTokens;
+            if (rev.verdict === "issues") {
+              yield { type: "tool_done", name: "review", label: "fresh-eyes review", ok: false, summary: `${rev.findings.length} finding(s) — one repair round` };
+              appendTranscript(slug, { kind: "tool", tool: { name: "review", summary: `${rev.findings.length} finding(s) → repair`, ok: false } });
+              appendTranscript(slug, { kind: "system", text: `review findings: ${JSON.stringify(rev.findings)}` });
+              messages.push({
+                role: "user",
+                content: `[XVibe fresh-context reviewer — findings on the app's final state. You get ONE repair round.]\n${rev.findings.map((f, i) => `${i + 1}. ${f}`).join("\n")}\nFix what is real. If a finding is mistaken, say why in one line instead of complying blindly. Keep changes minimal, then stop and summarize.`,
+              });
+              saveConversation(slug, messages);
+              continue;
+            }
+            yield { type: "tool_done", name: "review", label: "fresh-eyes review", ok: true, summary: "pass — no findings" };
+            appendTranscript(slug, { kind: "tool", tool: { name: "review", summary: "pass", ok: true } });
+          } catch (e) {
+            // Reviewer infrastructure must never sink a finished build.
+            yield { type: "tool_done", name: "review", label: "fresh-eyes review", ok: true, summary: `review skipped — ${e instanceof Error ? e.message : String(e)}` };
+          }
+        }
         saveConversation(slug, messages);
         appendTranscript(slug, { kind: "system", text: `usage: ${JSON.stringify(usage)}` });
         yield { type: "turn_done", stopReason: final.stop_reason ?? "end_turn", usage };
@@ -151,6 +188,7 @@ export async function* runBuilder(slug: string, userMessage: string): AsyncGener
         const label = toolLabel(use.name, input);
         yield { type: "tool_start", name: use.name, label };
         const outcome = await dispatchTool(slug, mcpToken, use.name, input, buildCtx);
+        if (!outcome.isError && TOUCHING_TOOLS.has(use.name)) touchedApp = true;
         appendTranscript(slug, { kind: "tool", tool: { name: use.name, summary: outcome.summary, ok: !outcome.isError } });
         if (outcome.filesChanged) changed.push(...outcome.filesChanged);
         yield { type: "tool_done", name: use.name, label, ok: !outcome.isError, summary: outcome.summary };

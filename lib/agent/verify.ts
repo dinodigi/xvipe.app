@@ -41,7 +41,28 @@ export interface VerifyReport {
 const NON_COLLECTION_PATHS = new Set(["assets", "auth", "changes", "files", "health", "hooks", "me", "search"]);
 
 const INLINE_SCRIPT = /<script(?![^>]*\bsrc\s*=)[^>]*>([\s\S]*?)<\/script>/gi;
-const API_REF = /\/api\/v1\/([A-Za-z0-9_-]+)/g;
+export const API_REF = /\/api\/v1\/([A-Za-z0-9_-]+)/g;
+
+/**
+ * Server-code drift patterns (task #9 — a real Haiku build once wrote a Node
+ * backend). None of these have any meaning in a browser file; each one means
+ * the model is hallucinating a server it does not have.
+ */
+const SERVER_CODE_PATTERNS: { re: RegExp; what: string }[] = [
+  { re: /\brequire\s*\(\s*['"]/, what: 'require("…") — Node module loading' },
+  { re: /\bmodule\.exports\b/, what: "module.exports — Node module system" },
+  { re: /\bprocess\.env\b/, what: "process.env — server environment access" },
+  { re: /\.listen\s*\(\s*\d/, what: ".listen(<port>) — starting a server" },
+  { re: /\bfrom\s+['"](?:express|node:|fs|http|https|path|crypto)['"]/, what: "importing a Node/server module" },
+];
+
+function serverCodeFindings(label: string, code: string): string[] {
+  const hits = SERVER_CODE_PATTERNS.filter((p) => p.re.test(code));
+  if (!hits.length) return [];
+  return [
+    `${label} contains SERVER code (${hits.map((h) => h.what).join("; ")}). The shipped app is static browser files — there is no server, no Node, no build step. Rewrite as browser JS calling /api/v1; business rules belong in Pluggie's declarative layer.`,
+  ];
+}
 
 async function parseCheck(label: string, code: string, loader: "js" | "css"): Promise<string[]> {
   try {
@@ -109,6 +130,15 @@ export async function verifyAppFile(
     for (const m of content.matchAll(INLINE_SCRIPT)) {
       i += 1;
       if (m[1]?.trim()) report.blockers.push(...(await parseCheck(`${path} inline <script> #${i}`, m[1], "js")));
+    }
+  }
+
+  /* ── server-code drift layer (js + inline scripts) ── */
+  if (ext === "js" || ext === "mjs") {
+    report.findings.push(...serverCodeFindings(path, content));
+  } else if (ext === "html") {
+    for (const m of content.matchAll(INLINE_SCRIPT)) {
+      if (m[1]?.trim()) report.findings.push(...serverCodeFindings(`${path} (inline script)`, m[1]));
     }
   }
 

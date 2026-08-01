@@ -1,5 +1,24 @@
 # Shipped & verified
 
+## 2026-07-31 (later)
+- **#9 Reviewer pass + drift hardening shipped + live-verified**:
+  - `lib/agent/reviewer.ts`: fresh-context Haiku audit of the app's FINAL
+    state (files + live schema dossier, forced-verdict tool, read-only) after
+    any app-touching turn; findings buy exactly ONE repair round in the
+    builder loop. Reviewer failures never sink a finished build (~$0.02).
+  - Write-time server-code drift patterns in verify.ts (require/module.exports/
+    process.env/.listen/node imports) — the HealthFlow `server.js` class now
+    dies at write time AND at review time.
+  - Live tests 3/3: dirty fixture → 5 findings (credential literal, client-
+    only rule, missing collection, SMS honesty, server code); clean guestbook
+    → pass; drift patterns fire. E2E chat turn: edit→Haiku route, api-lint ok,
+    review chip "pass — no findings".
+  - **The reviewer's first real catch**: the guestbook workspace still carried
+    HealthFlow-era leftovers (BACKEND_SIMPLE.js — the original drift artifact
+    — plus dead js/auth.js with demo creds + localhost:3000 AUTH_API). Builder
+    tunnel vision missed them; fresh eyes didn't. Workspace cleaned; contract
+    now orders list_app_files + delete-stale-files on rebuilds.
+
 ## 2026-07-31
 - **P0 agent strength (#13) shipped + live-verified**:
   - **Model tiers + router** (`lib/agent/models.ts`): auto-classification per

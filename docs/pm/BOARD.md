@@ -1,28 +1,25 @@
 # Board — updated 2026-07-31
 
 ## In progress
-- **#9 Reviewer pass** — fresh-context post-build audit vs. the contract
-  (next up; P0 shipped 07-31, see DONE).
+- **#14 Eval harness v1** — next up (#9 reviewer shipped 07-31, see DONE).
 
 ## Next up (queued, in order — Cloudflare route decided 07-31)
-2. **#14 Eval harness v1** — 10–15 golden tasks, run on contract changes
-   (~$3–5/sweep).
-3. **#15 Claude Agent SDK spike** — embed the Claude Code harness; go/no-go
+1. **#15 Claude Agent SDK spike** — embed the Claude Code harness; go/no-go
    on error rate + cost.
-4. **CF-1: move xvibe.app zone to Cloudflare** (⚑ operator-assisted:
+2. **CF-1: move xvibe.app zone to Cloudflare** (⚑ operator-assisted:
    nameserver flip at Namecheap; CF auto-imports records) — prerequisite for
    edge serving + Workers routing.
-5. **#10 Edge serving worker** — apps served from R2 at the edge + token-
+3. **#10 Edge serving worker** — apps served from R2 at the edge + token-
    injecting /api/v1 proxy in the worker; Render leaves the app-serving path.
-6. **#18 Custom domains** (Cloudflare for SaaS custom hostnames) — user
+4. **#18 Custom domains** (Cloudflare for SaaS custom hostnames) — user
    CNAMEs their domain, CF issues/renews certs, edge worker maps hostname →
    app; Domains tool in the studio. The flagship paid-tier anchor.
-7. **#17 Workers-for-Platforms functions** — per-app server code on rented
+5. **#17 Workers-for-Platforms functions** — per-app server code on rented
    isolates, behind `xvibe/runtime` shim + `RuntimeTarget` (exit insurance in
    AGENT-PLAN §4). Includes the one XVibe-owned secrets store: per-app
    per-env function env-vars (write-only, encrypted, bound at deploy via the
    shim). Gated on #12 kill-switch + cost caps.
-8. **#16 Planning layer + task trees** — PRD builder → per-app backlog →
+6. **#16 Planning layer + task trees** — PRD builder → per-app backlog →
    agent-assisted sprints (agent proposes scope, splits into tasks,
    predicts footprint collisions, parallelizes disjoint work); parallel
    tasks as independent copies of main, each with its own live preview
