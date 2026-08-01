@@ -11,6 +11,7 @@
     "boundary": "node scripts/check-boundary.mjs",
     "spine": "node scripts/prove-spine.mjs",
     "verify-connection": "tsx scripts/verify-connection.mts",
+    "evals": "tsx evals/run.mts",
     "verify": "npm run typecheck && npm run boundary && npm run spine"
   },
   "dependencies": {

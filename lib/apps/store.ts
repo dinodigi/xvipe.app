@@ -126,6 +126,18 @@ export function updateApp(slug: string, patch: Partial<AppMeta>): AppMeta {
   return next;
 }
 
+/**
+ * Remove an app and everything under it (workspace, transcript, token
+ * custody). Used by the eval harness to clean up its throwaway apps; the
+ * slug regex in appDir() is the guard that keeps this inside .xvibe/apps.
+ */
+export function deleteApp(slug: string): void {
+  const dir = appDir(slug);
+  if (!existsSync(join(dir, "app.json"))) throw new Error(`Unknown app: ${slug}`);
+  rmSync(dir, { recursive: true, force: true });
+  rmSync(deploysDir(slug), { recursive: true, force: true });
+}
+
 export function listApps(): AppMeta[] {
   if (!existsSync(APPS)) return [];
   return readdirSync(APPS)

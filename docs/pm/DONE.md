@@ -1,5 +1,45 @@
 # Shipped & verified
 
+## 2026-07-31 (evening) — #14 eval harness
+- **Eval harness v1 shipped** (`evals/`, `npm run evals`): 12 golden build
+  tasks (4 core) with **mechanical** assertions — shipped files, live schema,
+  real delivery responses, tools actually called. Runs the REAL pipeline
+  (router → builder → verify → probe → reviewer), then cleans up the apps and
+  the collections it created. `--all/--tasks=/--pin=/--keep`; report to
+  `evals/last-run.json`.
+- **Four production bugs the sweep found in the same-day P0/#9 work** — the
+  harness paid for itself on first use:
+  1. **API-lint blind spot**: apps that hoist the base
+     (`const API="/api/v1"; fetch(\`${API}/bookings\`)`) referenced NO literal
+     path, so lint saw nothing and the reviewer got an empty schema section →
+     shared `extractCollectionRefs` (certain vs. inferred candidates), used by
+     lint, reviewer and evals.
+  2. **Reviewer false positive on compose semantics**: flagged
+     `publicWrite:true` + `access.write` as a contradiction. Verified against
+     the live support-inbox collection (both set simultaneously) — contract
+     rule 4a added.
+  3. **Reviewer fabricated schema facts**: raw `describe_collection` JSON was
+     clipped at 2.5k, truncating the field array, so it "found" a missing
+     publicRead on a field that had one → compact, complete per-field
+     summaries instead (never truncated).
+  4. **Reviewer scope creep**: project-wide `list_schedules` made it demand
+     schemas for *other apps'* collections → scoped to this app's collections
+     + explicit shared-project note.
+- **Reviewer precision pass**: read-vs-write distinction (form inputs are not
+  projection reads), input-format checks are not business rules, marketing
+  copy is not a platform promise, plus a mechanical hedge filter (findings
+  must assert a defect, not ask a question). Regression-checked: still catches
+  all 6 planted violations on the dirty fixture, still passes a clean app.
+- **Platform semantics learned + documented**: delivery 404s for two reasons —
+  "no collection X" (bug) vs "exists but has no publicly readable fields"
+  (correct for write-only collections). In the contract, the reviewer prompt
+  and the eval assertions.
+- **Status**: guestbook / lead-form / booking-no-double / nightly-cleanup each
+  verified PASS. The final baseline sweep aborted at task 3 — **the Anthropic
+  account ran out of credit** (⚑ operator: top up to re-run). Sweep now aborts
+  on billing errors instead of reporting bogus regressions. Spend for the
+  day's eval work ≈ $11.
+
 ## 2026-07-31 (later)
 - **#9 Reviewer pass + drift hardening shipped + live-verified**:
   - `lib/agent/reviewer.ts`: fresh-context Haiku audit of the app's FINAL

@@ -1,7 +1,8 @@
 # Board — updated 2026-07-31
 
 ## In progress
-- **#14 Eval harness v1** — next up (#9 reviewer shipped 07-31, see DONE).
+- **#15 Claude Agent SDK spike** — next up (#14 evals shipped 07-31; ⚑ blocked
+  on an Anthropic top-up before any further model spend).
 
 ## Next up (queued, in order — Cloudflare route decided 07-31)
 1. **#15 Claude Agent SDK spike** — embed the Claude Code harness; go/no-go
@@ -29,6 +30,8 @@
    diffs** (design decided 07-31, see DECISIONS).
 
 ## Waiting on operator ⚑
+- **Anthropic credit top-up** — the key ran dry during the 07-31 eval sweep.
+  Blocks every builder run (studio + evals); nothing else is affected.
 - **Render env hygiene** — `BUILDER_MODEL` there is now ignored (safe to
   delete); `XVIBE_FORCE_MODEL` exists as a cost-emergency override.
 - **`*.xvibe.app` wildcard** — 3 CNAMEs at Namecheap + Render custom domain,

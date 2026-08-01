@@ -18,6 +18,9 @@ scripts/out/
 # XVibe server-side state: app workspaces, delivery-token custody, deploys
 .xvibe/
 
+# eval sweep results (regenerated per run; the tasks themselves are tracked)
+evals/last-run.json
+
 # misc
 .DS_Store
 *.log

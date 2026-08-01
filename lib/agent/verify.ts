@@ -40,6 +40,33 @@ export interface VerifyReport {
 /** Delivery paths that are platform surface, not collections. */
 const NON_COLLECTION_PATHS = new Set(["assets", "auth", "changes", "files", "health", "hooks", "me", "search"]);
 
+/**
+ * Which collections does this file talk to? Two shapes, because apps write
+ * both — and an eval sweep caught us seeing only the first:
+ *  - `certain`: a literal "/api/v1/<name>" in the source.
+ *  - `candidates`: the app hoisted the base (`const API = "/api/v1"`) and then
+ *    built URLs (`${API}/bookings`, API + "/bookings"). The name is a guess,
+ *    so callers must treat these as leads to confirm, never as accusations.
+ */
+export function extractCollectionRefs(text: string): { certain: string[]; candidates: string[] } {
+  const certain = new Set<string>();
+  for (const m of text.matchAll(API_REF)) if (!NON_COLLECTION_PATHS.has(m[1])) certain.add(m[1]);
+
+  const candidates = new Set<string>();
+  if (/["'`]\/api\/v1\/?["'`]/.test(text)) {
+    const patterns = [
+      /\$\{[^}]{1,40}\}\/([A-Za-z0-9_-]+)/g, //  `${API}/bookings`
+      /\+\s*["'`]\/([A-Za-z0-9_-]+)/g, //        API + "/bookings"
+    ];
+    for (const re of patterns) {
+      for (const m of text.matchAll(re)) {
+        if (!NON_COLLECTION_PATHS.has(m[1]) && !certain.has(m[1])) candidates.add(m[1]);
+      }
+    }
+  }
+  return { certain: [...certain], candidates: [...candidates] };
+}
+
 const INLINE_SCRIPT = /<script(?![^>]*\bsrc\s*=)[^>]*>([\s\S]*?)<\/script>/gi;
 export const API_REF = /\/api\/v1\/([A-Za-z0-9_-]+)/g;
 
@@ -144,11 +171,16 @@ export async function verifyAppFile(
 
   /* ── API-lint layer (html/js only — where fetches live) ── */
   if (ext === "html" || ext === "js" || ext === "mjs") {
-    const names = new Set<string>();
-    for (const m of content.matchAll(API_REF)) {
-      if (!NON_COLLECTION_PATHS.has(m[1])) names.add(m[1]);
+    const { certain, candidates } = extractCollectionRefs(content);
+    // Candidates come from string-built URLs, so a name that doesn't resolve
+    // is probably not a collection at all — inform, never accuse.
+    for (const name of candidates) {
+      const facts = await collectionFacts(name, mcpToken, ctx);
+      if (facts?.exists && facts.publicFields?.length) {
+        report.notes.push(`/api/v1/${name} (URL built from a base constant) → public fields: [${facts.publicFields.join(", ")}].`);
+      }
     }
-    for (const name of names) {
+    for (const name of certain) {
       const facts = await collectionFacts(name, mcpToken, ctx);
       if (!facts) {
         report.notes.push(`API-lint could not verify /api/v1/${name} right now — double-check it yourself.`);

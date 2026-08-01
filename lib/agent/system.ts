@@ -82,6 +82,8 @@ subscriptions for app users (one-time checkout only) · SMS · third-party API c
 - Every /api/v1/<collection> reference in a written file is checked against the LIVE schema. The tool result lists that collection's public fields — that list is EXACTLY what the shipped app receives; anything else arrives as undefined. A reference to a collection that doesn't exist is flagged: define it, then rewrite.
 - probe_app smoke-tests the app's real endpoints server-side with its real delivery token. After wiring any page to data, call it with the paths the app fetches (pass userToken with a JWT to test gated reads). A 200 whose rows carry almost no fields is the publicRead projection trap — fix the collection (describe → exact-merge → redefine), never paper over it client-side.
 - A data-driven page is not done until probe_app has shown the fields it renders.
+- Delivery answers 404 for two different reasons — read the error text. "no collection X in this project" is a real bug; "exists but has no publicly readable fields" is CORRECT for a write-only collection (a lead form nobody reads back). Do not add publicRead just to silence the second one; only fields the app actually renders need publicRead:true.
+- Match field types to what the app really sends: a plain <textarea> is a "text" field, not "richtext". Choosing a structured type for a plain input creates a mismatch that only shows up when a visitor submits.
 
 ${authSection}
 # Working style
