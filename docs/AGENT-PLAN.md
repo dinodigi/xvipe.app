@@ -41,7 +41,13 @@ agent's own mistakes repeatedly in testing. The loop around the model is.
    sandbox with mechanical assertions. Run on every contract change. This is
    our substitute for "training on our tools."
 
-## 2. P1 — the structural fix: Claude Agent SDK spike
+## 2. P1 — the structural fix ⚠️ SUPERSEDED 2026-08-01
+
+> **The spike ran and reversed this section.** Verdict: no-go on the Claude
+> Agent SDK (its built-in Bash/filesystem tools are incompatible with token
+> custody on the studio host); adopt the SDK **Tool Runner** instead, which
+> supplies the loop, hooks and context management with no built-in tools.
+> See `docs/AGENT-SDK-SPIKE.md`. Original text kept below for the record.
 
 Replace the hand-rolled loop with the **Claude Agent SDK** (Claude Code as a
 library): its loop, context management, planning, subagents and hooks —

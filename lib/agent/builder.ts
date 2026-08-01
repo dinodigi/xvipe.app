@@ -22,6 +22,15 @@ import { appendTranscript, getApp, loadConversation, saveConversation, wsList } 
 // XVIBE_FORCE_MODEL is the operator's cost-emergency override of everything.
 const FORCED_MODEL = process.env.XVIBE_FORCE_MODEL?.trim();
 const MAX_ROUNDS = 40;
+
+/**
+ * Output ceiling per round. On Sonnet 5 adaptive thinking is ON whenever the
+ * `thinking` field is omitted, and max_tokens caps thinking AND response text
+ * together — a build turn that thinks hard can hit the ceiling mid-answer. We
+ * stream, so a large ceiling costs nothing unless it is used. (Haiku 4.5 caps
+ * at 64k output; everything else is far higher.)
+ */
+const MAX_OUTPUT_TOKENS = 32000;
 const MAX_TURNS_KEPT = 80;
 
 const toolLabel = (name: string, input: Record<string, unknown>): string => {
@@ -111,7 +120,7 @@ export async function* runBuilder(slug: string, userMessage: string): AsyncGener
       messages = trimConversation(messages);
       const stream = anthropic.messages.stream({
         model,
-        max_tokens: 16000,
+        max_tokens: MAX_OUTPUT_TOKENS,
         // Prompt caching: the marker on the system block caches tools+system
         // (they render first), so every loop round re-reads the big stable
         // prefix at ~0.1× instead of full price. The top-level marker
@@ -145,6 +154,31 @@ export async function* runBuilder(slug: string, userMessage: string): AsyncGener
       messages.push({ role: "assistant", content: final.content });
 
       const toolUses = final.content.filter((b) => b.type === "tool_use");
+
+      // Not every non-tool_use stop means "finished". Two of them mean the
+      // opposite, and both used to look exactly like a clean turn.
+      if (final.stop_reason === "refusal") {
+        const why = (final as { stop_details?: { category?: string } }).stop_details?.category;
+        const message = `The model declined this request${why ? ` (${why})` : ""}. Nothing was changed. Rephrase, or ask for a different approach.`;
+        appendTranscript(slug, { kind: "system", text: `refusal: ${why ?? "unspecified"}` });
+        yield { type: "error", message };
+        saveConversation(slug, messages);
+        yield { type: "turn_done", stopReason: "refusal", usage };
+        return;
+      }
+      if (final.stop_reason === "max_tokens") {
+        // The round was cut off mid-thought — the app may be half-written, so
+        // a reviewer pass here would audit work the builder never finished.
+        appendTranscript(slug, { kind: "system", text: "stopped: max_tokens (truncated round)" });
+        yield {
+          type: "error",
+          message: "The builder hit its output limit mid-round, so this turn is incomplete. Send \"continue\" and it will pick up from here.",
+        };
+        saveConversation(slug, messages);
+        yield { type: "turn_done", stopReason: "max_tokens", usage };
+        return;
+      }
+
       if (final.stop_reason !== "tool_use" || toolUses.length === 0) {
         // The builder is done — fresh-eyes review before we call it a turn.
         if (touchedApp && !reviewSpent && decision.route !== "question") {

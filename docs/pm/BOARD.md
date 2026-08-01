@@ -1,12 +1,14 @@
 # Board — updated 2026-07-31
 
 ## In progress
-- **#15 Claude Agent SDK spike** — next up (#14 evals shipped 07-31; ⚑ blocked
-  on an Anthropic top-up before any further model spend).
+- **#10 Edge serving worker** — code ready; needs `wrangler deploy` (⚑ 2 min
+  of operator terminal, see docs/CLOUDFLARE.md).
 
 ## Next up (queued, in order — Cloudflare route decided 07-31)
-1. **#15 Claude Agent SDK spike** — embed the Claude Code harness; go/no-go
-   on error rate + cost.
+1. **#19 Tool Runner adoption** — replaces the reversed #15 (spike said no-go
+   on the Agent SDK, see docs/AGENT-SDK-SPIKE.md). Order: server-side
+   compaction + context editing → move the round loop onto `tool_runner`
+   (keep `dispatchTool`) → per-call approval hooks for destructive verbs.
 2. ~~**CF-1: move xvibe.app zone to Cloudflare**~~ — **DONE 2026-07-31**, see
    DONE.md. Unblocked #10 / #18 / #17.
 3. **#10 Edge serving worker** — **code written + tested 07-31**

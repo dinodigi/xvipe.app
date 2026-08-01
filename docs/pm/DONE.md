@@ -1,5 +1,31 @@
 # Shipped & verified
 
+## 2026-08-01 — #15 harness spike (verdict + 3 bug fixes)
+- **NO-GO on the Claude Agent SDK; adopt the SDK Tool Runner instead** —
+  reverses AGENT-PLAN §2. The Agent SDK ships Bash + local Read/Write/Edit;
+  on the studio host that filesystem holds every app's `secret.json`, so
+  importing it would invert our custody model and leave the boundary standing
+  on permission config instead of absence. The Tool Runner (already in
+  `@anthropic-ai/sdk` 0.115) supplies the loop, per-turn approval/interception
+  hooks, retries, streaming, and **server-side compaction + context editing**
+  (better than our hand-rolled `trimConversation`) — with no built-in tools.
+  Full reasoning + adoption order: `docs/AGENT-SDK-SPIKE.md`; follow-up = #19.
+- **Three production bugs found and fixed while researching the surface:**
+  1. `stop_reason: "refusal"` unhandled — a declined request rendered as a
+     normal, empty, successful turn. Now surfaced with its category.
+  2. `stop_reason: "max_tokens"` unhandled — a round cut off mid-thought ended
+     the build silently, with the app possibly half-written and the reviewer
+     auditing unfinished work. Now reported as incomplete with a "continue"
+     path; reviewer skipped for that turn.
+  3. `max_tokens: 16000` too tight — on Sonnet 5 adaptive thinking is ON when
+     `thinking` is omitted (it is), and max_tokens caps thinking + text
+     together. Raised to 32k; we stream, so headroom is free unless used.
+- **Levers documented, deliberately not pulled**: `output_config.effort`
+  (`xhigh` is the documented coding/agentic sweet spot — costs more, so
+  operator's call; **errors on Haiku 4.5**, must be tier-gated), and
+  mid-conversation system messages for the reviewer repair round (not
+  supported on Sonnet 5, our build tier).
+
 ## 2026-07-31 (night) — CF-1 zone move COMPLETE
 - **`xvibe.app` DNS is now on Cloudflare** (operator + Chrome extension;
   nameservers `damian`/`deb.ns.cloudflare.com`, switched 20:59 PDT). Verified
