@@ -38,6 +38,7 @@ const { callTool, getProjectInfo, PluggieError } = await import("@/lib/pluggie/m
 const { extractCollectionRefs } = await import("@/lib/agent/verify");
 const { DELIVERY_BASE } = await import("@/lib/pluggie/delivery");
 const { createApp, deleteApp, getDeliveryToken, updateApp, wsList, wsRead } = await import("@/lib/apps/store");
+const { removeDeliveryToken } = await import("@/lib/deploy/kv");
 const AnthropicMod = await import("@anthropic-ai/sdk");
 
 const TOKEN = process.env.PLUGGIE_MCP_TOKEN!;
@@ -182,6 +183,7 @@ for (const [i, task] of selected.entries()) {
       reports.push({ ...report, seconds: Math.round((Date.now() - started) / 1000) });
       if (!keep) {
         await cleanupCollections(created);
+        await removeDeliveryToken(app.slug);
         try {
           deleteApp(app.slug);
         } catch {
@@ -275,6 +277,9 @@ for (const [i, task] of selected.entries()) {
   if (!keep) {
     const leftovers = await cleanupCollections(created);
     if (leftovers.length) report.leftovers = leftovers;
+    // A build that minted a token also mirrored it to the edge — drop that
+    // too, or every sweep leaves a live credential for a deleted app in KV.
+    await removeDeliveryToken(app.slug);
     try {
       deleteApp(app.slug);
     } catch {
