@@ -16,8 +16,12 @@
  * here no-ops rather than failing a build.
  */
 
+/** One token serves both wrangler and this module — no duplicate secret. */
+const cfApiToken = (): string | undefined =>
+  (process.env.CLOUDFLARE_API_TOKEN || process.env.CF_API_TOKEN)?.trim();
+
 export function kvConfigured(): boolean {
-  return Boolean(process.env.CF_API_TOKEN && process.env.CF_KV_NAMESPACE_ID && (process.env.CF_ACCOUNT_ID || process.env.R2_ACCOUNT_ID));
+  return Boolean(cfApiToken() && process.env.CF_KV_NAMESPACE_ID && (process.env.CF_ACCOUNT_ID || process.env.R2_ACCOUNT_ID));
 }
 
 export interface KvSyncResult {
@@ -47,7 +51,7 @@ export async function syncDeliveryToken(slug: string, token: string): Promise<Kv
 
     const res = await fetch(kvUrl(`token:${slug}`), {
       method: "PUT",
-      headers: { authorization: `Bearer ${process.env.CF_API_TOKEN!.trim()}` },
+      headers: { authorization: `Bearer ${cfApiToken()!}` },
       body: form,
       signal: AbortSignal.timeout(10_000),
     });
@@ -64,7 +68,7 @@ export async function removeDeliveryToken(slug: string): Promise<KvSyncResult> {
   try {
     const res = await fetch(kvUrl(`token:${slug}`), {
       method: "DELETE",
-      headers: { authorization: `Bearer ${process.env.CF_API_TOKEN!.trim()}` },
+      headers: { authorization: `Bearer ${cfApiToken()!}` },
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok && res.status !== 404) return { ok: false, error: `KV delete failed: HTTP ${res.status}` };

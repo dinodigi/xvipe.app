@@ -27,6 +27,7 @@ bucket_name = "xvibe-apps"
 # Delivery-token custody at the edge. Written by the studio (lib/deploy/kv.ts)
 # when the builder mints a token; read only by this worker. Never a bundle
 # object — R2 holds public bytes, KV holds the credential.
+# Namespace title is XVIBE_TOKENS; the worker sees it as `env.TOKENS`.
 [[kv_namespaces]]
 binding = "TOKENS"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "4cf7af4bb17d441a9c74e63f60a01282"
