@@ -56,11 +56,18 @@ running server-side in XVibe, on our key, with:
 This is the honest answer to "Claude Code works better": stop imitating the
 harness, embed it.
 
-## 3. P2 — plan-first building (the Replit-style ask)
+## 3. P2 — the planning layer: backlog → sprints → parallel task trees
+   (operator direction 07-31: "don't copy Replit, do it better" — productize
+   the PM model we already run in docs/pm)
 
-1. **Plan tool (PRD builder).** A planning pass that turns a prompt into
-   `PRD.md` + a task list (stored per app, shown as a studio tool). Building
-   executes tasks one at a time; each task = its own chat turn + checkpoint.
+1. **PRD builder → backlog → sprints.** The planning pass turns a prompt
+   into `PRD.md` + backlog items (per app, shown as a studio Plan tool that
+   mirrors this folder: backlog / sprint / done / decisions). Sprint
+   planning is agent-assisted: the agent proposes sprint scope from the
+   backlog, splits it into tasks, **predicts collisions from each task's
+   planned file/schema footprint, and parallelizes only disjoint work** —
+   conflict avoidance at planning time, not just resolution at merge time.
+   Sprint close = agent-written review (shipped / checkpoints / cost).
 2. **Task copies + per-task previews (operator design, decided 07-31).**
    Opening a task byte-copies main's workspace into `tasks/<id>/ws` (same
    snapshot machinery as Deploys). Each task serves its own live preview at
@@ -74,16 +81,20 @@ harness, embed it.
    gate, then a diff + merged preview for approval → lands as a new
    checkpoint. Open tasks keep their base and rebase the same way when their
    turn comes; conflicts stay two-sided forever.
-4. **Backend branching (the hard half).** Pluggie collections are live —
-   task copies duplicate FILES, not the database, so previews share the live
-   backend. Policy until real branches: **additive** schema ops (new
-   collection/field/schedule) apply immediately — harmless to main;
-   **mutating/destructive** ops are deferred, recorded as a plan, and land
-   as an approved **dry-run diff** at merge time. Real fix: **filed on the
-   wall — project branches backed by Neon branching** (Neon supports DB
-   branches natively; Pluggie sits on Neon). Branch project → task runs
-   against the branch → merge = replay defines. That single platform
-   feature makes the task tree fully isolated, backend included.
+4. **Backend split = dev/prod environments (operator is building this with
+   Pluggie directly).** Task copies duplicate FILES; data splits by
+   environment: task previews run against **dev**, main/live against
+   **prod**. In dev, all schema ops apply immediately — full-fidelity task
+   previews, mutations included. A task's merge turn **promotes** its
+   schema changes to prod as the approved dry-run diff. What XVibe needs
+   from the env feature to exploit it fully: (a) env-scoped MCP targeting
+   (defines/queries against dev vs prod), (b) env-scoped delivery tokens
+   (task previews mint dev tokens; live mints prod), (c) a schema
+   diff/promote path dev→prod (or we replay defines). Interim policy until
+   envs land: additive ops apply live, mutating ops defer to merge-time
+   dry-run diffs. Endgame stays **per-task Neon branches** (filed on the
+   wall) — parallel tasks currently share dev; branches give each task its
+   own database too.
 
 ## 4. P3 — no limits (the compute ladder, now committed)
 

@@ -24,11 +24,14 @@
 8. **#17 Workers-for-Platforms functions** — per-app server code on rented
    isolates, behind `xvibe/runtime` shim + `RuntimeTarget` (exit insurance in
    AGENT-PLAN §4). Gated on #12 kill-switch + cost caps.
-9. **#16 Plan mode + task trees** — PRD builder; parallel tasks as
-   independent copies of main, each with its own live preview
+9. **#16 Planning layer + task trees** — PRD builder → per-app backlog →
+   agent-assisted sprints (agent proposes scope, splits into tasks,
+   predicts footprint collisions, parallelizes disjoint work); parallel
+   tasks as independent copies of main, each with its own live preview
    (`<app>--t<n>` subdomains); serialized merge queue with agent
-   semantic-merge on overlaps; additive schema live / mutating schema as
-   merge-time dry-run diffs (design decided 07-31, see DECISIONS).
+   semantic-merge on overlaps; **dev/prod envs (operator building with
+   Pluggie): previews on dev, merges promote schema to prod as approved
+   diffs** (design decided 07-31, see DECISIONS).
 
 ## Waiting on operator ⚑
 - **"go P0"** — approves the Sonnet build tier spend (top of queue).
