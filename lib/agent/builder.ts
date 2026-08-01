@@ -6,12 +6,17 @@
  * ever reaches the studio client (it sees events, not credentials).
  */
 import Anthropic from "@anthropic-ai/sdk";
-import type { MessageParam, ContentBlockParam, Tool } from "@anthropic-ai/sdk/resources/messages";
+import type { Tool } from "@anthropic-ai/sdk/resources/messages";
+
+// The loop runs on the beta namespace (context management), whose content-block
+// union is wider than the stable one — so the conversation is typed to match.
+type MessageParam = Anthropic.Beta.BetaMessageParam;
+type ContentBlockParam = Anthropic.Beta.BetaContentBlockParam;
 import { getPluggieToken } from "@/lib/pluggie/token";
 import { getProjectInfo } from "@/lib/pluggie/mcp";
 import { buildSystemPrompt } from "@/lib/agent/system";
 import { dispatchTool, getAgentTools } from "@/lib/agent/tools";
-import { MODELS, isModelPin, routeRequest, type RouteDecision } from "@/lib/agent/models";
+import { MODELS, isModelPin, routeRequest, supportsContextManagement, type RouteDecision } from "@/lib/agent/models";
 import { createBuildContext } from "@/lib/agent/verify";
 import { reviewBuild } from "@/lib/agent/reviewer";
 import type { AgentEvent, TurnUsage } from "@/lib/agent/events";
@@ -48,7 +53,12 @@ const toolLabel = (name: string, input: Record<string, unknown>): string => {
   }
 };
 
-/** Trim old turns on safe boundaries (never split a tool_use/tool_result pair). */
+/**
+ * Local fallback trim, used only where server-side context management is not
+ * available (the Haiku fast tier). Crude by nature: it drops whole turns, so
+ * the agent forgets what it already did. On tiers that support it we let the
+ * API compact and clear instead, which preserves a summary of the history.
+ */
 function trimConversation(messages: MessageParam[]): MessageParam[] {
   if (messages.length <= MAX_TURNS_KEPT) return messages;
   const hasToolResult = (m: MessageParam) =>
@@ -104,6 +114,11 @@ export async function* runBuilder(slug: string, userMessage: string): AsyncGener
   // Per-turn caches for the verification layer (collection facts).
   const buildCtx = createBuildContext();
 
+  // Long builds used to lose their own history to a crude boundary trim.
+  // Where the model supports it, the API compacts (summarizes) and clears
+  // stale tool results instead — the agent keeps a summary of what it did.
+  const manageContext = supportsContextManagement(model);
+
   // Fresh-eyes review state (P0.4): runs once per turn, after the builder
   // stops, if the turn actually touched the app. Findings buy exactly ONE
   // repair round — never a loop.
@@ -117,19 +132,39 @@ export async function* runBuilder(slug: string, userMessage: string): AsyncGener
 
   try {
     for (let round = 0; round < MAX_ROUNDS; round++) {
-      messages = trimConversation(messages);
-      const stream = anthropic.messages.stream({
+      // Only trim locally where the API cannot manage context for us.
+      if (!manageContext) messages = trimConversation(messages);
+
+      const request = {
         model,
         max_tokens: MAX_OUTPUT_TOKENS,
         // Prompt caching: the marker on the system block caches tools+system
         // (they render first), so every loop round re-reads the big stable
         // prefix at ~0.1× instead of full price. The top-level marker
         // auto-caches the conversation tail between rounds.
-        cache_control: { type: "ephemeral" },
+        cache_control: { type: "ephemeral" as const },
         system: [{ type: "text" as const, text: system, cache_control: { type: "ephemeral" as const } }],
         messages,
         tools: tools as Tool[],
-      });
+        ...(manageContext
+          ? {
+              betas: ["compact-2026-01-12", "context-management-2025-06-27"],
+              context_management: {
+                edits: [
+                  // Tool results dominate our context — a single
+                  // get_client_code or describe_collection dwarfs the prose.
+                  // Clear the stale ones first, then compact what remains.
+                  { type: "clear_tool_uses_20250919" },
+                  { type: "compact_20260112" },
+                ],
+              },
+            }
+          : {}),
+      };
+
+      // The beta namespace serves plain requests too, so one call site covers
+      // both tiers; only the context-management fields differ.
+      const stream = anthropic.beta.messages.stream(request as Parameters<typeof anthropic.beta.messages.stream>[0]);
 
       let turnText = "";
       for await (const event of stream) {

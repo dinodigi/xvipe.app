@@ -1,5 +1,24 @@
 # Shipped & verified
 
+## 2026-08-01 — #19 step 1: server-side context management
+- **Replaced the hand-rolled `trimConversation` with API context management**
+  on tiers that support it: `clear_tool_uses_20250919` (tool results dominate
+  our context — one `get_client_code` dwarfs the prose) followed by
+  `compact_20260112`. Long builds now keep a *summary* of their history
+  instead of losing whole turns to a boundary trim.
+- **Tier-gated**: context management is unavailable on Haiku 4.5, so the fast
+  tier keeps the local trim as its floor (`supportsContextManagement`).
+- The loop moved to the beta namespace, which serves plain requests too, so
+  one call site covers both tiers. Conversation types switched to
+  `BetaMessageParam`/`BetaContentBlockParam` (the beta content-block union is
+  wider). We already appended full `response.content` each round, which is
+  exactly what compaction requires to work.
+- **Verified in three steps rather than assumed**: a ~$0.001 direct call
+  proved the API accepts both edits + both betas together; a real build
+  through the eval harness (`--pin=sonnet`) passed 11/11 checks over 11 rounds
+  with streaming, tools, verification, probe and reviewer intact; and a cheap
+  Haiku call confirmed the fast-tier fallback path still works.
+
 ## 2026-08-01 — edge worker DEPLOYED + verified end to end
 - **`xvibe-edge` live on Cloudflare** (version `0ef48bd1`, route
   `*.xvibe.app/*`), KV namespace `XVIBE_TOKENS` created and bound, R2

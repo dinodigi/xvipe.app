@@ -21,6 +21,13 @@ export const MODEL_PINS = ["auto", "haiku", "sonnet", "opus"] as const;
 export const isModelPin = (v: unknown): v is ModelPin =>
   typeof v === "string" && (MODEL_PINS as readonly string[]).includes(v);
 
+/**
+ * Server-side context management (compaction + tool-result clearing) is
+ * available on the Sonnet/Opus/Fable families but NOT on Haiku 4.5. Turns
+ * routed to the fast tier keep the local trim as their floor.
+ */
+export const supportsContextManagement = (model: string): boolean => !/haiku/i.test(model);
+
 export type Route = "question" | "edit" | "build";
 
 const ROUTE_MODEL: Record<Route, string> = {
