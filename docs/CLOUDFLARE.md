@@ -9,7 +9,14 @@ custom domains (#18) and per-app functions (#17).
 
 ---
 
-## Step 1 — move the `xvibe.app` zone to Cloudflare ⚑ you
+## Step 1 — move the `xvibe.app` zone to Cloudflare ✅ DONE 2026-07-31
+
+Nameservers `damian.ns.cloudflare.com` / `deb.ns.cloudflare.com`, switched at
+20:59 PDT; delegation propagated within minutes. All 11 records serve from
+Cloudflare, **all still DNS-only (grey cloud)**. Kept for the record because
+the method is reusable for the next domain — and because Cloudflare's scan
+silently missed all three CNAMEs, two of which are Render's cert-verification
+records.
 
 Today `xvibe.app` DNS is authoritative at **Namecheap**
 (`dns1/dns2.registrar-servers.com`). Cloudflare cannot attach a Worker route
@@ -97,3 +104,38 @@ itself, which is exactly the fallback we want.
 in the response headers tells you the worker served it; a `503
 E_APP_NOT_CONNECTED` on `/api/v1` means the KV token never synced — re-publish
 to heal.
+
+### Order of operations (matters)
+
+Everything is DNS-only today, which means **a Worker route cannot fire yet** —
+routes only intercept hostnames that resolve *through* Cloudflare. Use that:
+deploy the worker while it is still inert, then switch traffic to it one
+record at a time.
+
+1. `wrangler kv namespace create` + `wrangler deploy` — route exists, fires on
+   nothing. Zero risk.
+2. Set `CF_API_TOKEN` / `CF_KV_NAMESPACE_ID` on Render, then **re-publish one
+   app** so its delivery token lands in KV.
+3. Proxy **one** record (orange-cloud `*.apps`) and test that app end to end —
+   page loads, form submits, `x-xvibe-version` present.
+4. Only then consider the apex/`www`, which the studio serves and the worker
+   deliberately passes through.
+
+Rollback at any point is one click: grey-cloud the record and traffic returns
+to Render exactly as before.
+
+---
+
+## Step 3 — short URLs (`<app>.xvibe.app`) — separate change
+
+The current wildcard is `*.apps`, so apps live at `<app>.apps.xvibe.app`. For
+the short form:
+
+1. Cloudflare: add `CNAME  *  →  <render service hostname>`.
+2. Render: add `*.xvibe.app` as a custom domain and satisfy its verification.
+3. Flip `XVIBE_APPS_BASE_DOMAIN` from `apps.xvibe.app` to `xvibe.app`.
+
+Do this *after* the worker rollout, not during — one moving part at a time.
+Note the worker already handles both shapes: it treats a label containing a
+dot (`foo.apps`) as not-an-app and passes it through, so the old URLs keep
+working during the transition.

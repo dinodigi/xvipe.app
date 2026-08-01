@@ -1,5 +1,23 @@
 # Shipped & verified
 
+## 2026-07-31 (night) — CF-1 zone move COMPLETE
+- **`xvibe.app` DNS is now on Cloudflare** (operator + Chrome extension;
+  nameservers `damian`/`deb.ns.cloudflare.com`, switched 20:59 PDT). Verified
+  from here: delegation live on 8.8.8.8 within minutes, and Cloudflare serves
+  every record — apex + www A (216.24.57.1), `*.apps` CNAME, both Render
+  verification CNAMEs, SPF TXT, 5 MX. Live checks: apex 401 (gate working),
+  www 301, `xvibe.apps.xvibe.app` 200.
+- **Method that made it zero-downtime**: import first, diff against the
+  registrar's list, add what the scan missed BY HAND, and only then flip
+  nameservers — both sides served identical zones through propagation.
+  Cloudflare's scan silently missed **all three CNAMEs**, including the two
+  Render ACME/hostname records whose loss would break `*.apps` cert renewal.
+  Records deliberately left **DNS-only**: moving the zone and changing how
+  traffic flows are two separate changes, and proxying is only needed when
+  the Worker route goes live.
+- Namecheap email forwarding (5 MX + SPF) is now inert — expected and
+  accepted; nothing uses mail on this domain. Tidy up later.
+
 ## 2026-07-31 (night) — edge serving prep, no model spend
 - **`npm run evals:reset`** wraps the shipped `reset_project` (our 07-30 wall
   ask came back as OPS-6). Plan-only by default, `--wipe` to execute; never
