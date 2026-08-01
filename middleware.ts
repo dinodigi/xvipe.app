@@ -8,9 +8,7 @@
  * so a bundle that works in the preview works in production unchanged.
  */
 import { NextRequest, NextResponse } from "next/server";
-
-// First-level subdomains that are never app slugs (apps live at <slug>.<apps domain>)
-const RESERVED = new Set(["www", "studio", "api", "admin", "mail"]);
+import { isReservedSlug } from "@/lib/apps/reserved";
 
 export function middleware(req: NextRequest) {
   const host = req.headers.get("host") ?? "";
@@ -36,7 +34,7 @@ export function middleware(req: NextRequest) {
       null,
     );
 
-  if (m && !RESERVED.has(m[1])) {
+  if (m && !isReservedSlug(m[1])) {
     // Built-app traffic: public by design, never gated.
     const url = req.nextUrl.clone();
     url.pathname = `/apps/${m[1]}${url.pathname === "/" ? "" : url.pathname}`;

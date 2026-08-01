@@ -81,14 +81,13 @@ function wsPath(slug: string, relPath: string): string {
 
 /* ── app lifecycle ────────────────────────────────────────────────────────── */
 
-/** Hostnames the studio itself owns — an app slug may never shadow them. */
-const RESERVED_SLUGS = new Set(["www", "studio", "api", "admin", "mail", "unlock", "apps"]);
+import { isReservedSlug } from "@/lib/apps/reserved";
 
 /** Always create a new app (multi-app: the switcher's "New app…"). */
 export function createApp(projectId: string, name: string): AppMeta {
   mkdirSync(APPS, { recursive: true });
   let slug = slugify(name);
-  if (RESERVED_SLUGS.has(slug)) slug = `app-${slug}`;
+  if (isReservedSlug(slug)) slug = `${slug}-app`;
   let n = 2;
   while (existsSync(appDir(slug))) slug = `${slugify(name)}-${n++}`;
 

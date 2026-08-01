@@ -1,5 +1,28 @@
 # Shipped & verified
 
+## 2026-08-01 — SHORT URLs LIVE: apps at `<slug>.xvibe.app`
+- **Proxied `*` wildcard on Cloudflare Free** — the open question from the
+  worker design is answered: the Free plan proxies wildcards with no
+  restriction. That also de-risks #18 (custom domains).
+- **Preview and published domains split** *before* the flip, which would
+  otherwise have broken the core loop: `appsDomain` drove both the studio's
+  live preview iframe and the published URL, so flipping it would have pointed
+  the preview at the edge — showing the last R2 snapshot instead of the
+  agent's edits, and "No app here" for a never-published app. Middleware now
+  rewrites both domains (it previously only knew the apps domain, so the
+  preview host would have stopped resolving entirely).
+  - `XVIBE_APPS_BASE_DOMAIN=xvibe.app` → published, edge, R2 snapshot
+  - `XVIBE_PREVIEW_BASE_DOMAIN=apps.xvibe.app` → live workspace, this host
+- **Reserved-name list expanded** from 7 to ~80 (`lib/apps/reserved.ts`;
+  mirrored in the worker, which cannot import from the studio). App slugs now
+  consume the product's own subdomain namespace, so squatting is free today
+  and expensive later. The worker's own test suite caught the change
+  immediately — its fixture used `demo`, which is now reserved.
+- **Verified live**: preview serves the working directory from Render,
+  published serves from the edge (`x-xvibe-version: 7`), reserved names are
+  not treated as apps, unknown slugs get the worker's styled 404, and old
+  `*.apps.xvibe.app` links still work unchanged.
+
 ## 2026-08-01 — #19 step 1: server-side context management
 - **Replaced the hand-rolled `trimConversation` with API context management**
   on tiers that support it: `clear_tool_uses_20250919` (tool results dominate

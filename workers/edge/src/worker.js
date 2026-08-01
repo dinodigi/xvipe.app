@@ -18,7 +18,22 @@
  * (docs/AGENT-PLAN.md §4, exit insurance rule 1).
  */
 
-const RESERVED = new Set(["www", "studio", "api", "admin", "mail", "unlock", "apps"]);
+// Mirror of lib/apps/reserved.ts — this runtime cannot import from the studio,
+// so the two lists are kept in sync by hand. Reserving costs nothing; taking a
+// name back after a user's app is live on it costs them their URL.
+const RESERVED = new Set([
+  "www", "studio", "api", "admin", "unlock", "apps", "app", "dashboard", "console",
+  "account", "accounts", "login", "signup", "signin", "auth", "oauth", "sso",
+  "billing", "invoice", "invoices", "pay", "payments", "checkout",
+  "blog", "docs", "doc", "help", "support", "status", "about", "pricing",
+  "careers", "jobs", "press", "news", "changelog", "roadmap",
+  "legal", "terms", "privacy", "security", "trust", "abuse", "dmca",
+  "cdn", "assets", "static", "media", "files", "img", "images", "download",
+  "mail", "smtp", "imap", "email", "ns", "ns1", "ns2", "dns", "mx",
+  "health", "metrics", "monitor", "logs", "grafana",
+  "dev", "staging", "stage", "test", "testing", "qa", "sandbox", "demo",
+  "preview", "beta", "alpha", "next", "edge", "local",
+]);
 
 /** Request headers we pass upstream. Cookies never cross. */
 const FORWARD_REQUEST = ["content-type", "if-none-match", "x-user-token", "accept"];

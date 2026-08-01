@@ -1,10 +1,16 @@
 # Board — updated 2026-07-31
 
 ## In progress
-- **#10 Edge serving worker** — **deployed + verified 08-01** (serving, token
-  injection and POST all proven on a test hostname). Remaining: Render env
-  vars for automatic token sync, then move real traffic (orange-cloud
-  `*.apps`, or go straight to short URLs). See docs/CLOUDFLARE.md.
+- **#19 Tool Runner adoption** — step 1 (server-side context management)
+  shipped 08-01. Next: move the round loop onto `tool_runner`, then per-call
+  approval hooks.
+
+## Recently completed
+- ~~**#10 Edge serving worker**~~ — **DONE 08-01**. Deployed, verified, and
+  serving published apps at the short `<slug>.xvibe.app` URLs via the proxied
+  `*` wildcard. Preview stays on `apps.xvibe.app` (live workspace). Optional
+  tidy-up: delete the now-redundant explicit `xvibe` CNAME (needs DNS-edit
+  permission, which the deploy token deliberately lacks).
 
 ## Next up (queued, in order — Cloudflare route decided 07-31)
 1. **#19 Tool Runner adoption** — replaces the reversed #15 (spike said no-go
