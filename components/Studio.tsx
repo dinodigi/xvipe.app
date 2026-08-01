@@ -120,6 +120,7 @@ export function Studio(props: {
   const palInputRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<{ ok: boolean; title: string; url?: string; sub?: string } | null>(null);
   const [publishing, setPublishing] = useState(false);
+  const [published, setPublished] = useState(Boolean(app.publishedVersion));
   const [agentW, setAgentW] = useState(392);
   const dividerRef = useRef<HTMLDivElement>(null);
 
@@ -148,6 +149,12 @@ export function Studio(props: {
     : previewDomain
       ? `${app.slug}.${previewDomain}`
       : `/apps/${app.slug}/`;
+
+  // The published snapshot lives on a DIFFERENT host to the preview, and the
+  // two are easy to confuse — so link it explicitly once the app has shipped.
+  // Shown in local dev too: publishing from a local studio still uploads to R2
+  // and the short URL really does serve it, so hiding the link would lie.
+  const publishedUrl = published && props.appsDomain ? `https://${app.slug}.${props.appsDomain}/` : undefined;
 
   /* ── data fetchers ── */
   const refreshFiles = useCallback(async () => {
@@ -367,6 +374,7 @@ export function Studio(props: {
       const res = await fetch(`/api/apps/${app.slug}/publish`, { method: "POST" });
       const body = (await res.json()) as { url?: string; version?: number; note?: string; error?: string };
       if (res.ok && body.url) {
+        setPublished(true);
         setToast({ ok: true, title: `Published v${body.version}.`, url: body.url, sub: body.note });
         void loadDeploys();
       } else setToast({ ok: false, title: "Publish failed", sub: body.error ?? `HTTP ${res.status}` });
@@ -712,7 +720,7 @@ export function Studio(props: {
                       <path d="M20 12a8 8 0 1 1-2.5-5.8M20 3.5V8h-4.5" />
                     </svg>
                   </button>
-                  <div className="addr">
+                  <div className="addr" title="This is the live working copy — it updates as the builder writes files, before you publish.">
                     <svg className="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
                       <rect x="5" y="10.5" width="14" height="10" rx="2" />
                       <path d="M8 10V7a4 4 0 1 1 8 0v3" />
@@ -720,11 +728,27 @@ export function Studio(props: {
                     <span>
                       <b>{previewHost}</b>
                     </span>
+                    <span className="addr-tag">live · unpublished edits</span>
                   </div>
                   {previewUrl && (
-                    <a className="nav" href={previewUrl} target="_blank" rel="noreferrer" title="Open in new tab" aria-label="Open in new tab">
+                    <a className="nav" href={previewUrl} target="_blank" rel="noreferrer" title="Open this live preview in a new tab" aria-label="Open live preview in a new tab">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M14 4h6v6M20 4 11 13M9 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3" />
+                      </svg>
+                    </a>
+                  )}
+                  {publishedUrl && (
+                    <a
+                      className="nav pub"
+                      href={publishedUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={`Published app — ${publishedUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")} (the snapshot your visitors see)`}
+                      aria-label="Open the published app"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="9" />
+                        <path d="M3.5 12h17M12 3.5c2.6 2.3 4 5.2 4 8.5s-1.4 6.2-4 8.5c-2.6-2.3-4-5.2-4-8.5s1.4-6.2 4-8.5Z" />
                       </svg>
                     </a>
                   )}

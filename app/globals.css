@@ -103,6 +103,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .modelsel:hover, .modelsel:focus-visible { border-color: var(--coral); color: var(--ink); outline: none; }
 .modelsel option { background: var(--panel, #16151d); color: var(--ink); }
 
+/* Preview vs published: two different hosts serving two different things.
+   Label the address bar so the distinction is visible, not folklore. */
+.addr-tag { margin-left: auto; padding-left: 10px; font: 10px var(--mono); letter-spacing: 0.02em; color: var(--faint); white-space: nowrap; flex: none; }
+.nav.pub:hover { color: var(--coral); }
+
 .divider { width: 5px; flex: none; cursor: col-resize; position: relative; background: transparent; }
 .divider::after { content: ""; position: absolute; inset: 0 2px; background: transparent; transition: background 0.15s; }
 .divider:hover::after, .divider.drag::after { background: var(--coral-dim); }
