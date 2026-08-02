@@ -421,6 +421,43 @@ export const TASKS: EvalTask[] = [
     ],
   },
   {
+    id: "component-app",
+    tier: "full",
+    prompt:
+      "Build a task board for a small team: tasks have a title, an assignee and a status (todo / doing / done). Visitors can filter by status and by assignee, and clicking a task moves it to the next status with the UI updating immediately. Seed about eight tasks.",
+    assertions: [
+      collectionLike(/task|todo|item|card/i, "tasks"),
+      {
+        // The stack is the agent's choice — but if it reaches for JSX/TS, the
+        // compile pipeline must have produced a browser-ready sibling.
+        name: "every source file has compiled output",
+        run: (ctx) => {
+          const sources = ctx.files.filter((f) => /\.(ts|tsx|jsx)$/i.test(f.path)).map((f) => f.path);
+          const missing = sources.filter((s) => !ctx.files.some((f) => f.path === s.replace(/\.(ts|tsx|jsx)$/i, ".js")));
+          return missing.length ? `source files with no compiled .js: ${missing.join(", ")}` : null;
+        },
+      },
+      {
+        name: "JSX apps ship their runtime and import map",
+        run: (ctx) => {
+          const usesJsx = ctx.files.some((f) => /\.(tsx|jsx)$/i.test(f.path));
+          if (!usesJsx) return null;
+          if (!ctx.files.some((f) => f.path === "vendor/preact.js")) return "JSX used but vendor/preact.js was never added";
+          const html = ctx.files.filter((f) => f.path.endsWith(".html")).map((f) => ctx.read(f.path)).join("\n");
+          return /type=["']importmap["']/.test(html) ? null : "JSX used but no import map in any HTML — the compiled runtime cannot resolve";
+        },
+      },
+      {
+        name: "HTML references compiled output, never sources",
+        run: (ctx) => {
+          const html = ctx.files.filter((f) => f.path.endsWith(".html")).map((f) => ctx.read(f.path)).join("\n");
+          const bad = [...html.matchAll(/(?:src|href)=["']([^"']+\.(?:ts|tsx|jsx))["']/gi)].map((m) => m[1]);
+          return bad.length ? `HTML loads source files the browser cannot run: ${[...new Set(bad)].join(", ")}` : null;
+        },
+      },
+    ],
+  },
+  {
     id: "multipage-site",
     tier: "full",
     prompt:

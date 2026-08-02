@@ -16,7 +16,7 @@
  */
 import { cpSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { deploysDir, getApp, getDeliveryToken, updateApp, wsDir, wsList } from "@/lib/apps/store";
+import { deploysDir, getApp, getDeliveryToken, isSourceOnly, updateApp, wsDir, wsList } from "@/lib/apps/store";
 import { r2Configured, uploadBundle } from "@/lib/deploy/r2";
 import { kvConfigured, syncDeliveryToken } from "@/lib/deploy/kv";
 
@@ -33,7 +33,11 @@ export interface DeployResult {
 export async function deployApp(slug: string, studioOrigin: string): Promise<DeployResult> {
   const app = getApp(slug);
   if (!app) throw new Error(`Unknown app: ${slug}`);
-  const files = wsList(slug);
+  // Publish the browser-ready bundle only: .ts/.tsx/.jsx sources live in the
+  // workspace so the agent can re-read and edit them, but shipping them would
+  // send dead bytes to every visitor. Their compiled .js siblings are already
+  // in the list.
+  const files = wsList(slug).filter((f) => !isSourceOnly(f.path));
   if (!files.some((f) => f.path === "index.html")) {
     throw new Error("Nothing to publish yet — the app has no index.html. Ask the builder to create the app first.");
   }
@@ -44,7 +48,7 @@ export async function deployApp(slug: string, studioOrigin: string): Promise<Dep
   mkdirSync(dir, { recursive: true });
   const version = readdirSync(dir).filter((d) => /^v\d+$/.test(d)).length + 1;
   const snapshot = join(dir, `v${version}`);
-  cpSync(wsDir(slug), snapshot, { recursive: true });
+  cpSync(wsDir(slug), snapshot, { recursive: true, filter: (src) => !isSourceOnly(src) });
 
   updateApp(slug, { publishedAt: new Date().toISOString(), publishedVersion: version });
 

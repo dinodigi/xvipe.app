@@ -8,6 +8,7 @@
  */
 import type { AppMeta } from "@/lib/apps/store";
 import type { ProjectInfo } from "@/lib/pluggie/mcp";
+import { IMPORT_MAP_SNIPPET } from "@/lib/agent/transpile";
 
 export function buildSystemPrompt(app: AppMeta, info: ProjectInfo): string {
   const projectName = info.project?.branding?.displayName ?? info.project?.name ?? "this project";
@@ -71,7 +72,14 @@ subscriptions for app users (one-time checkout only) · SMS · third-party API c
 
 # The shipped app (workspace rules)
 - Static, browser-ready files only — write_app_file/read_app_file/list_app_files/delete_app_file. index.html at the app root; relative asset paths; ES modules are fine. No build step exists: no npm, no bundler, no framework CLIs, no server code.
-- Keep it small and dependency-free. No external CDNs for core function (a broken CDN = a broken app); hand-rolled JS + CSS is the default.
+- Keep it small and dependency-free. No external CDNs for core function (a broken CDN = a broken app).
+- CHOOSING THE STACK. Plain HTML/CSS/JS is the default and is right for most pages — a landing page, a form, a list. Reach for components when the UI has real interactive state: several views, a filterable/sortable list, optimistic updates, anything where hand-rolled DOM updates would sprawl.
+  - You may write .ts, .tsx and .jsx. Each is compiled to a sibling .js the moment you write it (types are stripped, JSX becomes function calls) — reference the .js from your HTML, keep editing the source. Type errors are NOT checked, only syntax; types are for your own clarity.
+  - JSX renders with Preact, vendored into the app at vendor/preact.js automatically on your first .tsx/.jsx write. It is a real file in the bundle, not a CDN link.
+  - index.html MUST carry the import map before any module script, or the compiled JSX cannot resolve its runtime:
+${IMPORT_MAP_SNIPPET.split("\n").map((l) => `    ${l}`).join("\n")}
+  - Import hooks from "preact/hooks" and render with: import { render } from "preact"; render(<App />, document.getElementById("root")).
+  - Do not mix: a file is either plain .js or a compiled source, never both names for the same module.
 - The app's DESIGN belongs to the user's domain — a real product for the business described, with its own personality. It must NOT look like the XVibe studio (do not reuse the studio's dark coral-on-charcoal look unless the user asks for it).
 - Accessibility is not optional: semantic HTML, labels on inputs, keyboard-reachable controls, visible focus.
 - Delivery API shapes: GET /api/v1/<collection> returns publicRead fields only; filters ?field=value, sort ?sort=field:asc, paging ?limit=&offset=, search ?q=. POST /api/v1/<collection> for publicWrite forms. PATCH/DELETE /api/v1/<collection>/<id> under owner/claim rules with X-User-Token. Poll GET /api/v1/changes?since=<cursor> for near-realtime.

@@ -40,7 +40,13 @@ export interface AppMeta {
 /** Browser-ready static files only: no build step, no server code, no dotfiles. */
 const ALLOWED_EXTENSIONS = new Set([
   "html", "css", "js", "mjs", "json", "svg", "txt", "md", "webmanifest", "ico", "png", "jpg", "jpeg", "gif", "webp", "woff2",
+  // Sources the agent may author; each is compiled to a sibling .js on write
+  // (lib/agent/transpile.ts) and filtered out of published bundles.
+  "ts", "tsx", "jsx",
 ]);
+
+/** Source files that exist only to be compiled — never shipped to a browser. */
+export const isSourceOnly = (path: string): boolean => /\.(ts|tsx|jsx)$/i.test(path);
 const MAX_FILE_BYTES = 1_000_000; // 1 MB per file
 const MAX_TOTAL_BYTES = 10_000_000; // 10 MB per app
 const MAX_FILES = 200;

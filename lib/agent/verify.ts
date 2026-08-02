@@ -15,6 +15,7 @@
  */
 import { transform } from "esbuild";
 import { callTool } from "@/lib/pluggie/mcp";
+import { loaderFor } from "@/lib/agent/transpile";
 
 export interface CollectionFacts {
   exists: boolean;
@@ -72,7 +73,23 @@ export function extractCollectionRefs(text: string): { certain: string[]; candid
   return { certain: [...certain], candidates: [...candidates] };
 }
 
-const INLINE_SCRIPT = /<script(?![^>]*\bsrc\s*=)[^>]*>([\s\S]*?)<\/script>/gi;
+const SCRIPT_TAG = /<script([^>]*)>([\s\S]*?)<\/script>/gi;
+
+/**
+ * Inline blocks that are actually JavaScript. A <script> with a src has no
+ * body worth checking, and a typed block may not be JS at all — an import map
+ * is JSON, and parsing it as JavaScript rejects a perfectly valid page. (It
+ * did: this is why index.html could not be written once JSX shipped.)
+ */
+function* inlineScripts(html: string): Generator<string> {
+  for (const m of html.matchAll(SCRIPT_TAG)) {
+    const attrs = m[1] ?? "";
+    if (/\bsrc\s*=/i.test(attrs)) continue;
+    const type = attrs.match(/\btype\s*=\s*["']?([^"'\s>]+)/i)?.[1]?.toLowerCase();
+    if (type && !/^(module|text\/javascript|application\/javascript|text\/ecmascript)$/.test(type)) continue;
+    if (m[2]?.trim()) yield m[2];
+  }
+}
 export const API_REF = /\/api\/v1\/([A-Za-z0-9_-]+)/g;
 
 /**
@@ -96,7 +113,7 @@ function serverCodeFindings(label: string, code: string): string[] {
   ];
 }
 
-async function parseCheck(label: string, code: string, loader: "js" | "css"): Promise<string[]> {
+async function parseCheck(label: string, code: string, loader: "js" | "css" | "ts" | "tsx" | "jsx"): Promise<string[]> {
   try {
     await transform(code, { loader });
     return [];
@@ -153,7 +170,13 @@ export async function verifyAppFile(
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
 
   /* ── parse layer ── */
-  if (ext === "js" || ext === "mjs") {
+  const sourceLoader = loaderFor(path);
+  if (sourceLoader) {
+    // .ts / .tsx / .jsx — type errors are not caught here (esbuild strips
+    // types rather than checking them), but syntax errors are, and a file
+    // that cannot parse cannot be compiled either.
+    report.blockers.push(...(await parseCheck(path, content, sourceLoader)));
+  } else if (ext === "js" || ext === "mjs") {
     report.blockers.push(...(await parseCheck(path, content, "js")));
   } else if (ext === "css") {
     report.blockers.push(...(await parseCheck(path, content, "css")));
@@ -165,23 +188,23 @@ export async function verifyAppFile(
     }
   } else if (ext === "html") {
     let i = 0;
-    for (const m of content.matchAll(INLINE_SCRIPT)) {
+    for (const code of inlineScripts(content)) {
       i += 1;
-      if (m[1]?.trim()) report.blockers.push(...(await parseCheck(`${path} inline <script> #${i}`, m[1], "js")));
+      report.blockers.push(...(await parseCheck(`${path} inline <script> #${i}`, code, "js")));
     }
   }
 
-  /* ── server-code drift layer (js + inline scripts) ── */
-  if (ext === "js" || ext === "mjs") {
+  /* ── server-code drift layer (js/ts sources + inline scripts) ── */
+  if (ext === "js" || ext === "mjs" || sourceLoader) {
     report.findings.push(...serverCodeFindings(path, content));
   } else if (ext === "html") {
-    for (const m of content.matchAll(INLINE_SCRIPT)) {
-      if (m[1]?.trim()) report.findings.push(...serverCodeFindings(`${path} (inline script)`, m[1]));
+    for (const code of inlineScripts(content)) {
+      report.findings.push(...serverCodeFindings(`${path} (inline script)`, code));
     }
   }
 
-  /* ── API-lint layer (html/js only — where fetches live) ── */
-  if (ext === "html" || ext === "js" || ext === "mjs") {
+  /* ── API-lint layer (wherever fetches live: html, js, and ts/tsx/jsx) ── */
+  if (ext === "html" || ext === "js" || ext === "mjs" || sourceLoader) {
     const { certain, candidates } = extractCollectionRefs(content);
     // Candidates come from string-built URLs, so a name that doesn't resolve
     // is probably not a collection at all — inform, never accuse.

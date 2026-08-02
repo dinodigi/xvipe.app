@@ -15,6 +15,16 @@ import { callTool, listTools } from "@/lib/pluggie/mcp";
 import { DELIVERY_BASE } from "@/lib/pluggie/delivery";
 import { syncDeliveryToken } from "@/lib/deploy/kv";
 import { createBuildContext, verifyAppFile, type BuildContext } from "@/lib/agent/verify";
+import { isTranspilable, transpileAppFile } from "@/lib/agent/transpile";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+/** Where the vendored runtime lands inside an app, matching the import map. */
+const VENDOR_PREACT_PATH = "vendor/preact.js";
+let vendoredPreact: string | undefined;
+/** Read once per process — it is a committed build artefact, not user data. */
+const readVendoredPreact = (): string =>
+  (vendoredPreact ??= readFileSync(join(process.cwd(), "lib", "vendor", "preact.js"), "utf8"));
 import {
   getApp,
   saveGenerated,
@@ -22,6 +32,7 @@ import {
   getDeliveryToken,
   updateApp,
   wsDelete,
+  wsExists,
   wsList,
   wsRead,
   wsWrite,
@@ -223,19 +234,39 @@ export async function dispatchTool(
         };
       }
       const file = wsWrite(slug, path, content);
+      const changed = [file.path];
+      const extras: Record<string, unknown> = {};
+
+      // .ts / .tsx / .jsx compile to a sibling .js right here, so the workspace
+      // stays browser-ready and the preview never needs a build step.
+      if (isTranspilable(path)) {
+        const out = await transpileAppFile(path, content);
+        const compiled = wsWrite(slug, out.path, out.code);
+        changed.push(compiled.path);
+        extras.compiledTo = compiled.path;
+        // JSX output imports preact/jsx-runtime — make sure the runtime is
+        // actually present rather than trusting the agent to remember it.
+        if (/\.(tsx|jsx)$/i.test(path) && !wsExists(slug, VENDOR_PREACT_PATH)) {
+          wsWrite(slug, VENDOR_PREACT_PATH, readVendoredPreact());
+          changed.push(VENDOR_PREACT_PATH);
+          extras.runtimeAdded = `${VENDOR_PREACT_PATH} — reference it with the import map in index.html (see the contract).`;
+        }
+      }
+
       const clean = v.findings.length === 0;
       return {
         result: {
           ok: clean,
           ...file,
+          ...extras,
           ...(v.findings.length ? { apiLint: v.findings } : {}),
           ...(v.notes.length ? { api: v.notes } : {}),
         },
         isError: !clean,
         summary: clean
-          ? `wrote ${file.path} (${file.bytes} B)${v.notes.length ? " · api-lint ok" : ""}`
+          ? `wrote ${file.path}${extras.compiledTo ? ` → ${extras.compiledTo}` : ""} (${file.bytes} B)${v.notes.length ? " · api-lint ok" : ""}`
           : `wrote ${file.path} — ${preview(v.findings[0], 90)}`,
-        filesChanged: [file.path],
+        filesChanged: changed,
       };
     }
     if (name === "probe_app") {

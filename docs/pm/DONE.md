@@ -1,5 +1,35 @@
 # Shipped & verified
 
+## 2026-08-01 — #20: TypeScript + JSX + vendored Preact
+- **The agent can now write `.ts` / `.tsx` / `.jsx`.** Each compiles to a
+  sibling `.js` on write via `esbuild.transform()` — no config, no plugins, no
+  npm resolution, the same call we already make to parse-check every file.
+  Both files stay in the workspace, so the preview needs no build step and
+  `read_app_file` still returns the SOURCE the agent wrote (it can edit its own
+  file rather than re-reading compiled output). Sources are filtered out of
+  published bundles, so deploys remain byte copies of browser-ready files.
+- **Preact vendored, never a CDN** (`npm run vendor` → `lib/vendor/preact.js`,
+  15.2 kB: core + hooks + both JSX runtimes, bundled at *our* development time
+  from *our* dependency). Copied into an app automatically on its first
+  `.tsx`/`.jsx` write, so the runtime cannot be forgotten. JSX uses the
+  automatic runtime pointed at "preact"; an import map in `index.html`
+  resolves every emitted specifier to that one file.
+- **Contract teaches when to reach for it**: plain HTML/CSS/JS stays the
+  default; components are for real interactive state (multiple views,
+  filter/sort, optimistic updates). Types are stripped, not checked — said
+  plainly so the agent doesn't trust them as a safety net.
+- **Bug caught by the test, not in production**: the import map is a
+  `<script type="importmap">` block, and the verifier was parse-checking every
+  inline script as JavaScript — so JSON-in-a-script-tag failed and
+  `index.html` could never be written. Inline-script scanning now skips typed
+  non-JS blocks. Without this the whole feature was unusable.
+- **Verified in a browser, not asserted**: built a real app through the actual
+  write path, loaded it, and confirmed the component rendered, hooks held
+  state across clicks, conditional classes applied, and the console was clean.
+- New eval task `component-app` guards the invariants: every source has
+  compiled output, JSX apps ship the runtime *and* an import map, and HTML
+  never references a source file the browser cannot run.
+
 ## 2026-08-01 — #19 closed: kept our loop, shipped the parts that pay
 - **Step 2 (port the loop to `tool_runner`) deliberately NOT done.** Read the
   installed runner's real type surface first: `betaTool()` wants const-literal
