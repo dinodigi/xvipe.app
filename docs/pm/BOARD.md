@@ -1,63 +1,64 @@
-# Board — updated 2026-07-31
+# Board — updated 2026-08-01
+
+Infrastructure is done. Everything open below is product work.
 
 ## In progress
-- **#19 Tool Runner adoption** — step 1 (server-side context management)
-  shipped 08-01. Next: move the round loop onto `tool_runner`, then per-call
-  approval hooks.
+*(nothing — pick from Next up)*
 
-## Recently completed
-- ~~**#10 Edge serving worker**~~ — **DONE 08-01**. Deployed, verified, and
-  serving published apps at the short `<slug>.xvibe.app` URLs via the proxied
-  `*` wildcard. Preview stays on `apps.xvibe.app` (live workspace). Optional
-  tidy-up: delete the now-redundant explicit `xvibe` CNAME (needs DNS-edit
-  permission, which the deploy token deliberately lacks).
+## Next up (recommended order)
 
-## Next up (queued, in order — Cloudflare route decided 07-31)
-1. **#19 Tool Runner adoption** — replaces the reversed #15 (spike said no-go
-   on the Agent SDK, see docs/AGENT-SDK-SPIKE.md). Order: server-side
-   compaction + context editing → move the round loop onto `tool_runner`
-   (keep `dispatchTool`) → per-call approval hooks for destructive verbs.
-2. ~~**CF-1: move xvibe.app zone to Cloudflare**~~ — **DONE 2026-07-31**, see
-   DONE.md. Unblocked #10 / #18 / #17.
-3. **#10 Edge serving worker** — **code written + tested 07-31**
-   (`workers/edge/`, 15/15 behaviour tests). Waiting only on CF-1, then one
-   `wrangler deploy` + 3 env vars. Steps: `docs/CLOUDFLARE.md`.
-4. **#18 Custom domains** (Cloudflare for SaaS custom hostnames) — user
-   CNAMEs their domain, CF issues/renews certs, edge worker maps hostname →
-   app; Domains tool in the studio. The flagship paid-tier anchor.
-5. **#17 Workers-for-Platforms functions** — per-app server code on rented
-   isolates, behind `xvibe/runtime` shim + `RuntimeTarget` (exit insurance in
-   AGENT-PLAN §4). Includes the one XVibe-owned secrets store: per-app
-   per-env function env-vars (write-only, encrypted, bound at deploy via the
-   shim). Gated on #12 kill-switch + cost caps.
-6. **#16 Planning layer + task trees** — PRD builder → per-app backlog →
-   agent-assisted sprints (agent proposes scope, splits into tasks,
-   predicts footprint collisions, parallelizes disjoint work); parallel
-   tasks as independent copies of main, each with its own live preview
-   (`<app>--t<n>` subdomains); serialized merge queue with agent
-   semantic-merge on overlaps; **dev/prod envs (operator building with
-   Pluggie): previews on dev, merges promote schema to prod as approved
-   diffs** (design decided 07-31, see DECISIONS).
+1. **#20 Frontend stack: TypeScript + JSX + vendored Preact** — raises the
+   ceiling on what the agent can build (real components, hooks, props instead
+   of hand-rolled DOM). Transpile on `write_app_file` with the esbuild we
+   already ship; workspace stays browser-ready, preview needs no build,
+   deploys stay byte copies. **Needs no new infrastructure** — the boundary is
+   "no arbitrary third-party code execution", not "no transformation" (see
+   PARKED). ~half a day + eval tasks for a component build.
+2. **Theme editor** — operator-flagged as a priority product investment.
+   Design-token themes the agent applies (palette / type / spacing presets),
+   answering the brief's open "does XVibe ship themes?". Scope as its own
+   design system when taken up.
+3. **#16 Planning layer + task trees** — the strategic centrepiece. PRD
+   builder → per-app backlog → agent-assisted sprints (agent proposes scope,
+   splits into tasks, predicts footprint collisions, parallelizes disjoint
+   work); parallel tasks as independent copies of main, each with its own
+   live preview (`<app>--t<n>`); serialized merge queue with agent
+   semantic-merge on overlaps; dev/prod envs — previews on dev, merges
+   promote schema to prod as approved diffs. Design decided 07-31, see
+   DECISIONS. Big; do it after the two above.
+4. **#12 Abuse kill-switch + report path** — **required before public
+   publishing and before #17 exposure.** Not urgent while the studio is
+   passphrase-gated and the operator is the only publisher.
+5. **#18 Custom domains** (Cloudflare for SaaS custom hostnames) — user CNAMEs
+   their domain, CF issues/renews certs, the edge worker maps hostname → app;
+   Domains tool in the studio. The flagship paid-tier anchor. De-risked now
+   that proxied wildcards are confirmed working on the Free plan.
+6. **#17 Workers-for-Platforms functions** — per-app server code on rented
+   isolates behind the `xvibe/runtime` shim + `RuntimeTarget` (exit insurance,
+   AGENT-PLAN §4). Includes the one XVibe-owned secrets store: per-app,
+   per-env function env-vars. Gated on #12 + cost caps.
+7. **#8 Build & deploy button in the Pluggie repo** — blocked on the repo path.
+8. **Studio polish batch** — richer new-app modal, mobile layout, Analytics
+   tool once it has an honest data source.
 
 ## Waiting on operator ⚑
-- **Anthropic credit top-up** — the key ran dry during the 07-31 eval sweep.
-  Blocks every builder run (studio + evals); nothing else is affected.
-- **Render env hygiene** — `BUILDER_MODEL` there is now ignored (safe to
-  delete); `XVIBE_FORCE_MODEL` exists as a cost-emergency override.
-- **`*.xvibe.app` wildcard** — 3 CNAMEs at Namecheap + Render custom domain,
-  then flip `XVIBE_APPS_BASE_DOMAIN` to `xvibe.app` (until then apps live at
-  `*.apps.xvibe.app`).
-- **Pluggie repo path** — unlocks #8 (the "Build & deploy" button).
+- **Pluggie repo path** — unblocks #8.
 - **Clerk staff-role setup** — token template + `publicMetadata.role`; until
   then demos use "any signed-in user".
 - **Finish the support-inbox test** — pipeline move + reload; watch the
   resolved-email land in the Logs tool.
-- **Token rotation** (mcp token + Anthropic key) — recommended hygiene.
+- **Token rotation** (mcp token + Anthropic key) — hygiene, overdue.
+- **Tidy-ups, both optional**: delete the now-redundant explicit `xvibe` CNAME
+  (the `*` wildcard covers it; the deploy token deliberately has no DNS-edit
+  permission), and delete `BUILDER_MODEL` on Render (ignored since P0).
 
-## Later
-- **#8** Build & deploy button in the Pluggie repo (needs path).
-- **#10** Edge/CDN offload — CF worker serves apps from R2 (needs zone move).
-- **#12** Abuse kill-switch + report path — **required before public
-  publishing / #17 exposure**.
-- Studio polish batch: publish-serves-snapshot, richer new-app modal, mobile
-  layout, Analytics tool when it has an honest data source.
+## Recently completed — see DONE.md for detail
+- **08-01** #19 agent loop: server-side context management; concurrent tool
+  execution; Tool Runner port declined with reasons recorded.
+- **08-01** Short URLs live — apps at `<slug>.xvibe.app` via the edge worker,
+  preview split onto `apps.xvibe.app`, ~80 subdomains reserved.
+- **08-01** #10 edge worker deployed + verified end to end (serving from R2,
+  token injection, POST, cookie stripping).
+- **08-01** #15 harness spike — NO-GO on the Agent SDK, plus 3 bug fixes.
+- **07-31** CF-1 zone move; #14 eval harness; #9 reviewer pass; #13 P0 agent
+  strength (model tiers, router, selector, verification, probe).
