@@ -1,5 +1,33 @@
 # Shipped & verified
 
+## 2026-08-01 — Theme editor (operator-flagged priority)
+- **Six design-token themes** (`lib/themes/`), each aimed at a domain XVibe
+  actually builds for: Consultation (clinics, legal), Storefront (salons,
+  boutiques), Console (internal tools), Field (trades), Studio (photographers,
+  weddings), Commons (clubs, schools, events). Deliberately none of the three
+  looks AI design converges on — cream + serif + terracotta, near-black +
+  acid accent, or the hairline broadsheet.
+- **Typefaces are system stacks on purpose.** Generated apps ship
+  self-contained with no CDN, and a webfont is a dependency that can fail;
+  reaching for the characterful faces systems already carry (Palatino, Futura,
+  Baskerville, Trebuchet) is what stops six themes reading as one template.
+- **Switching costs nothing.** A theme is one generated file, `css/theme.css`.
+  The agent styles against token names — `--accent`, `--ink`, `--radius`,
+  `--font-display` — so re-skinning is a single file write: no model call, no
+  rebuild, instant in the preview. New apps get a theme at creation so they
+  are never unstyled on first render.
+- **Studio Theme tool**: swatch-first cards (each card's name set in that
+  theme's own display face), current one marked, click to apply, preview
+  reloads. Plus a `set_app_theme` tool so the agent picks a fitting theme
+  while building and says why.
+- **Contract rule that makes it work**: never hard-code a colour, font, radius
+  or shadow, and never edit theme.css — every hard-coded value is a spot the
+  next theme fails to reach. Derive shades with `color-mix()` instead.
+- **Verified in the browser, not asserted**: applied all six and confirmed the
+  served CSS genuinely changes; then clicked Field in the studio and checked
+  the app's *computed* styles — yellow accent, uppercase 800 headings, square
+  corners, hard shadow — with no change to its markup.
+
 ## 2026-08-01 — #20: TypeScript + JSX + vendored Preact
 - **The agent can now write `.ts` / `.tsx` / `.jsx`.** Each compiles to a
   sibling `.js` on write via `esbuild.transform()` — no config, no plugins, no

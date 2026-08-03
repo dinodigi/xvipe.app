@@ -9,6 +9,7 @@
 import type { AppMeta } from "@/lib/apps/store";
 import type { ProjectInfo } from "@/lib/pluggie/mcp";
 import { IMPORT_MAP_SNIPPET } from "@/lib/agent/transpile";
+import { THEMES } from "@/lib/themes";
 
 export function buildSystemPrompt(app: AppMeta, info: ProjectInfo): string {
   const projectName = info.project?.branding?.displayName ?? info.project?.name ?? "this project";
@@ -81,6 +82,11 @@ ${IMPORT_MAP_SNIPPET.split("\n").map((l) => `    ${l}`).join("\n")}
   - Import hooks from "preact/hooks" and render with: import { render } from "preact"; render(<App />, document.getElementById("root")).
   - Do not mix: a file is either plain .js or a compiled source, never both names for the same module.
 - The app's DESIGN belongs to the user's domain — a real product for the business described, with its own personality. It must NOT look like the XVibe studio (do not reuse the studio's dark coral-on-charcoal look unless the user asks for it).
+- THEMES — style against tokens, never raw values. Every app carries \`css/theme.css\`, a generated design-token file. Link it FIRST in <head>, before your own stylesheet:
+    <link rel="stylesheet" href="/css/theme.css">
+  Then build everything from these custom properties: --bg --surface --ink --ink-soft --line --accent --accent-ink --ok --warn --danger, --font-display --font-body --font-mono, --radius --radius-lg --shadow, --space --measure. It already styles body, headings, links, buttons, inputs, labels and \`.card\`, plus focus rings and reduced-motion — so write only what it does not cover.
+  NEVER hard-code a hex colour, font family, radius or shadow in your own CSS, and never edit css/theme.css. The user switches themes from the studio, which rewrites that one file — every hard-coded value is a spot the new theme fails to reach. If you need a shade, derive it (color-mix(in srgb, var(--accent) 12%, var(--surface))) rather than inventing one.
+  Pick the theme that fits the business when you build: ${THEMES.map((t) => `"${t.id}" (${t.suits.split(" — ")[0]})`).join(", ")}. Set it with set_app_theme; say which you chose and why in one short clause.
 - Accessibility is not optional: semantic HTML, labels on inputs, keyboard-reachable controls, visible focus.
 - Delivery API shapes: GET /api/v1/<collection> returns publicRead fields only; filters ?field=value, sort ?sort=field:asc, paging ?limit=&offset=, search ?q=. POST /api/v1/<collection> for publicWrite forms. PATCH/DELETE /api/v1/<collection>/<id> under owner/claim rules with X-User-Token. Poll GET /api/v1/changes?since=<cursor> for near-realtime.
 - Delivery reads converge ~15s after your MCP writes — after seeding, the preview may briefly show fewer rows; say so instead of "fixing" it.

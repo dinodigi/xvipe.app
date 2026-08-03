@@ -3,8 +3,9 @@
  * POST /api/apps { projectId, name } → create a new app
  */
 import { NextRequest } from "next/server";
-import { createApp, listApps } from "@/lib/apps/store";
+import { createApp, getApp, listApps } from "@/lib/apps/store";
 import { getPluggieToken } from "@/lib/pluggie/token";
+import { applyDefaultTheme } from "@/lib/themes/apply";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,10 @@ export async function POST(req: NextRequest) {
   try {
     getPluggieToken(projectId); // validates this deployment may build for the project
     const app = createApp(projectId, name.trim());
-    return Response.json({ app });
+    // Give it a theme immediately so the very first render is styled and the
+    // agent has token names to write against from its first file.
+    applyDefaultTheme(app.slug);
+    return Response.json({ app: getApp(app.slug) ?? app });
   } catch (e) {
     return Response.json({ error: e instanceof Error ? e.message : String(e) }, { status: 403 });
   }

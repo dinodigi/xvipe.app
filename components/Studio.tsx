@@ -35,10 +35,13 @@ const ICONS: Record<string, string> = {
   data: '<ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5V12c0 1.7 3.6 3 8 3s8-1.3 8-3V5.5M4 12v6.5c0 1.7 3.6 3 8 3s8-1.3 8-3V12"/>',
   analytics: '<path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/>',
   logs: '<path d="M4 5h16M4 10h16M4 15h10M4 20h7"/>',
+  theme:
+    '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18 4.5 4.5 0 0 1 0-9 4.5 4.5 0 0 0 0-9Z"/>',
 };
 const TOOLS: { id: string; name: string; soon?: boolean }[] = [
   { id: "preview", name: "Preview" },
   { id: "code", name: "Code" },
+  { id: "theme", name: "Theme" },
   { id: "deploys", name: "Deploys" },
   { id: "data", name: "Data" },
   { id: "logs", name: "Logs" },
@@ -112,6 +115,12 @@ export function Studio(props: {
   const [dataErr, setDataErr] = useState<string | undefined>();
   const [logs, setLogs] = useState<Record<string, unknown>[]>([]);
   const [logsErr, setLogsErr] = useState<string | undefined>();
+
+  /* theme */
+  interface ThemeCard { id: string; name: string; suits: string; swatch: string[]; fontDisplay: string; radius: string }
+  const [themes, setThemes] = useState<ThemeCard[]>([]);
+  const [themeId, setThemeId] = useState<string | undefined>(app.themeId);
+  const [themeBusy, setThemeBusy] = useState<string | undefined>();
 
   /* palette + misc */
   const [palOpen, setPalOpen] = useState(false);
@@ -206,6 +215,16 @@ export function Studio(props: {
     [app.slug],
   );
 
+  const loadThemes = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/apps/${app.slug}/theme`);
+      if (!res.ok) return;
+      const body = (await res.json()) as { current: string | null; themes: ThemeCard[] };
+      setThemes(body.themes);
+      setThemeId(body.current ?? undefined);
+    } catch {}
+  }, [app.slug]);
+
   const loadLogs = useCallback(async () => {
     setLogsErr(undefined);
     try {
@@ -228,8 +247,9 @@ export function Studio(props: {
       if (id === "deploys") void loadDeploys();
       if (id === "data") void loadDataCols();
       if (id === "logs") void loadLogs();
+      if (id === "theme") void loadThemes();
     },
-    [loadDeploys, loadDataCols, loadLogs],
+    [loadDeploys, loadDataCols, loadLogs, loadThemes],
   );
   const closeTool = useCallback(
     (id: string) => {
@@ -248,6 +268,37 @@ export function Studio(props: {
       svg.classList.add("spinning");
     }
   }, []);
+
+  // Declared after bumpPreview: applying a theme reloads the preview so the
+  // new look lands immediately — that instant feedback is the feature.
+  const chooseTheme = useCallback(
+    async (id: string) => {
+      if (themeBusy) return;
+      setThemeBusy(id);
+      try {
+        const res = await fetch(`/api/apps/${app.slug}/theme`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ theme: id }),
+        });
+        const body = (await res.json()) as { ok?: boolean; error?: string };
+        if (res.ok && body.ok) {
+          setThemeId(id);
+          void refreshFiles();
+          bumpPreview();
+        } else {
+          setToast({ ok: false, title: "Couldn't apply theme", sub: body.error });
+          setTimeout(() => setToast(null), 4200);
+        }
+      } catch (e) {
+        setToast({ ok: false, title: "Couldn't apply theme", sub: e instanceof Error ? e.message : String(e) });
+        setTimeout(() => setToast(null), 4200);
+      } finally {
+        setThemeBusy(undefined);
+      }
+    },
+    [app.slug, themeBusy, refreshFiles, bumpPreview],
+  );
 
   /* ── chat send (SSE) ── */
   const send = useCallback(
@@ -801,6 +852,43 @@ export function Studio(props: {
                     </span>
                   )}
                 </pre>
+              </div>
+            </div>
+
+            {/* THEME */}
+            <div className="pane tool-pane" hidden={activeTool !== "theme"}>
+              <div className="tool-card">
+                <h3>
+                  Theme <span className="tag">design tokens · applies instantly, no rebuild</span>
+                </h3>
+                <div className="note" style={{ marginBottom: 14 }}>
+                  Rewrites <code style={{ fontFamily: "var(--mono)", color: "var(--coral-hot)" }}>css/theme.css</code> only. The
+                  builder styles against token names, so switching re-skins the whole app without touching its markup or logic.
+                </div>
+                <div className="themegrid">
+                  {themes.length === 0 && <div className="note">Loading themes…</div>}
+                  {themes.map((t) => (
+                    <button
+                      key={t.id}
+                      className="themecard"
+                      aria-pressed={themeId === t.id}
+                      disabled={Boolean(themeBusy)}
+                      onClick={() => void chooseTheme(t.id)}
+                    >
+                      <span className="swatch" aria-hidden="true">
+                        {t.swatch.map((c, i) => (
+                          <i key={i} style={{ background: c }} />
+                        ))}
+                      </span>
+                      <span className="tname" style={{ fontFamily: t.fontDisplay }}>
+                        {t.name}
+                        {themeId === t.id && <span className="on">applied</span>}
+                        {themeBusy === t.id && <span className="on">applying…</span>}
+                      </span>
+                      <span className="tsuits">{t.suits}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 

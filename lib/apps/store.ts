@@ -33,6 +33,8 @@ export interface AppMeta {
   publishedVersion?: number;
   /** studio model selector: "auto" (router decides) | "haiku" | "sonnet" | "opus" */
   modelPin?: string;
+  /** design-token theme applied to the app (lib/themes) */
+  themeId?: string;
 }
 
 /* ── workspace write rules — the agent writes here, so be strict ─────────── */

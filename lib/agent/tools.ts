@@ -16,6 +16,8 @@ import { DELIVERY_BASE } from "@/lib/pluggie/delivery";
 import { syncDeliveryToken } from "@/lib/deploy/kv";
 import { createBuildContext, verifyAppFile, type BuildContext } from "@/lib/agent/verify";
 import { isTranspilable, transpileAppFile } from "@/lib/agent/transpile";
+import { THEMES, getTheme } from "@/lib/themes";
+import { applyTheme } from "@/lib/themes/apply";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -168,6 +170,18 @@ const WORKSPACE_TOOLS: AnthropicTool[] = [
         userToken: { type: "string", description: "optional X-User-Token (end-user JWT) for gated reads" },
       },
       required: ["paths"],
+    },
+  },
+  {
+    name: "set_app_theme",
+    description:
+      "Apply one of XVibe's design-token themes to this app. Rewrites css/theme.css only — your own CSS is untouched, which is exactly why you must style against the token names rather than raw values. Choose the theme that fits the business you are building for.",
+    input_schema: {
+      type: "object",
+      properties: {
+        theme: { type: "string", enum: THEMES.map((t) => t.id), description: THEMES.map((t) => `${t.id}: ${t.suits}`).join(" | ") },
+      },
+      required: ["theme"],
     },
   },
   {
@@ -329,6 +343,21 @@ export async function dispatchTool(
     if (name === "delete_app_file") {
       wsDelete(slug, String(input.path));
       return { result: { ok: true }, isError: false, summary: `deleted ${input.path}`, filesChanged: [String(input.path)] };
+    }
+    if (name === "set_app_theme") {
+      const applied = applyTheme(slug, String(input.theme));
+      const theme = getTheme(applied.themeId)!;
+      return {
+        result: {
+          ok: true,
+          theme: theme.name,
+          file: applied.file,
+          note: "Link /css/theme.css first in <head> and style with the token names — never raw colours, or the next theme switch will miss them.",
+        },
+        isError: false,
+        summary: `theme → ${theme.name}`,
+        filesChanged: [applied.file],
+      };
     }
     if (name === "set_app_meta") {
       const app = updateApp(slug, {
