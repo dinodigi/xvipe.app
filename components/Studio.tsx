@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppMeta, DeployVersionInfo, TranscriptEvent, WsFile } from "@/lib/apps/store";
 import type { AgentEvent, TurnUsage } from "@/lib/agent/events";
 import { estimateCostUsd, formatUsd } from "@/lib/agent/pricing";
+import { DEFAULT_EFFORT, EFFORTS, EFFORT_BLURB, isEffort, type Effort } from "@/lib/agent/models";
 
 type Item =
   | { kind: "text"; text: string }
@@ -91,6 +92,11 @@ export function Studio(props: {
   /** Running total for this session — the number that answers "what am I spending?" */
   const [spentUsd, setSpentUsd] = useState(0);
   const [modelPin, setModelPin] = useState<string>(app.modelPin ?? "auto");
+  const [effort, setEffort] = useState<Effort>(isEffort(app.effortPin) ? app.effortPin : DEFAULT_EFFORT);
+  // Effort is rejected outright by the fast tier, so the control is disabled
+  // when the turn is certain to run there. Under Auto it stays live: the
+  // router may pick either tier, and the builder drops it when it picks Haiku.
+  const effortApplies = modelPin !== "haiku";
   const msgsRef = useRef<HTMLDivElement>(null);
 
   /* files / code */
@@ -365,7 +371,7 @@ export function Studio(props: {
         const res = await fetch(`/api/apps/${app.slug}/chat`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ message, model: modelPin }),
+          body: JSON.stringify({ message, model: modelPin, effort }),
         });
         if (!res.ok || !res.body) {
           const err = (await res.json().catch(() => ({}))) as { error?: string };
@@ -411,7 +417,7 @@ export function Studio(props: {
         bumpPreview();
       }
     },
-    [app.slug, busy, modelPin, refreshFiles, bumpPreview],
+    [app.slug, busy, modelPin, effort, refreshFiles, bumpPreview],
   );
 
   /* ── code viewer ── */
@@ -701,6 +707,28 @@ export function Studio(props: {
                 <option value="sonnet">Strong · Sonnet</option>
                 <option value="opus">Max · Opus</option>
               </select>
+              <span
+                className={`effort${effortApplies ? "" : " off"}`}
+                title={
+                  effortApplies
+                    ? `Effort: ${effort} — ${EFFORT_BLURB[effort]}\nCost follows the number of steps, not the thinking depth, so turning this DOWN usually costs more.`
+                    : "The fast tier does not accept an effort setting — pick Auto, Strong or Max to use it."
+                }
+              >
+                <span className="lbl">effort</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={EFFORTS.length - 1}
+                  step={1}
+                  value={EFFORTS.indexOf(effort)}
+                  disabled={!effortApplies}
+                  aria-label={`Model effort: ${effort}`}
+                  aria-valuetext={effort}
+                  onChange={(e) => setEffort(EFFORTS[Number(e.target.value)])}
+                />
+                <span className="val">{effortApplies ? effort : "n/a"}</span>
+              </span>
               <span>↵ send · shift+↵ newline · ⌘K commands</span>
               {lastUsage && (
                 <span className="r">

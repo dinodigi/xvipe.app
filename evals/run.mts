@@ -51,6 +51,8 @@ const arg = (name: string) => ARGV.find((a) => a.startsWith(`--${name}=`))?.spli
 const flag = (name: string) => ARGV.includes(`--${name}`);
 const only = arg("tasks")?.split(",").map((s) => s.trim()).filter(Boolean);
 const pin = arg("pin");
+/** --effort=low|medium|high|xhigh|max — the round-count lever, for A/Bs. */
+const effort = arg("effort");
 const keep = flag("keep");
 const selected: EvalTask[] = only
   ? TASKS.filter((t) => only.includes(t.id))
@@ -147,6 +149,7 @@ for (const [i, task] of selected.entries()) {
   const started = Date.now();
   const app = createApp(PROJECT_ID, `ev ${task.id} ${stamp}`);
   if (pin) updateApp(app.slug, { modelPin: pin });
+  if (effort) updateApp(app.slug, { effortPin: effort });
   console.log(`[${i + 1}/${selected.length}] ${task.id} → ${app.slug}`);
 
   const report: TaskReport = { id: task.id, passed: false, failures: [], checks: 0, cost: 0, model: "?", rounds: 0, seconds: 0 };

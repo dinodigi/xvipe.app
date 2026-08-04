@@ -4,7 +4,7 @@
  */
 import { NextRequest } from "next/server";
 import { runBuilder } from "@/lib/agent/builder";
-import { isModelPin } from "@/lib/agent/models";
+import { isEffort, isModelPin } from "@/lib/agent/models";
 import { getApp, updateApp } from "@/lib/apps/store";
 
 export const runtime = "nodejs";
@@ -15,7 +15,11 @@ const running = new Set<string>();
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: string }> }) {
   const { slug } = await ctx.params;
-  const { message, model } = (await req.json().catch(() => ({}))) as { message?: string; model?: string };
+  const { message, model, effort } = (await req.json().catch(() => ({}))) as {
+    message?: string;
+    model?: string;
+    effort?: string;
+  };
   if (!message?.trim()) {
     return Response.json({ error: "message required" }, { status: 400 });
   }
@@ -25,8 +29,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
   // Persist the studio's model selector with the message it applies to —
   // the builder reads it back off the app record.
   const app = getApp(slug);
-  if (app && isModelPin(model) && (app.modelPin ?? "auto") !== model) {
-    updateApp(slug, { modelPin: model });
+  if (app) {
+    const patch: { modelPin?: string; effortPin?: string } = {};
+    if (isModelPin(model) && (app.modelPin ?? "auto") !== model) patch.modelPin = model;
+    if (isEffort(effort) && app.effortPin !== effort) patch.effortPin = effort;
+    if (Object.keys(patch).length) updateApp(slug, patch);
   }
   running.add(slug);
 

@@ -28,6 +28,45 @@ export const isModelPin = (v: unknown): v is ModelPin =>
  */
 export const supportsContextManagement = (model: string): boolean => !/haiku/i.test(model);
 
+/**
+ * How hard the model works before answering: fewer, more consolidated tool
+ * calls at the low end, deeper exploration at the high end. This is the main
+ * lever on ROUND COUNT, and rounds are what drive cost — the whole prefix is
+ * re-read every round.
+ *
+ * Verified 2026-08-04: Sonnet 5 accepts low→max; **Haiku 4.5 returns a hard
+ * 400** ("This model does not support the effort parameter"). So this is
+ * gated in code, not merely hidden in the UI — a fast-tier turn must never
+ * carry it.
+ */
+export const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+export type Effort = (typeof EFFORTS)[number];
+
+/** The API's own default; selecting it explicitly changes nothing. */
+export const DEFAULT_EFFORT: Effort = "high";
+
+export const isEffort = (v: unknown): v is Effort =>
+  typeof v === "string" && (EFFORTS as readonly string[]).includes(v);
+
+export const supportsEffort = (model: string): boolean => !/haiku/i.test(model);
+
+/**
+ * Measured 2026-08-04 on the guestbook eval (Sonnet 5, identical task):
+ *   medium → 22 rounds / $0.87   high → 7 rounds / $0.26   xhigh → 9 / $0.28
+ *
+ * Lower effort does NOT save money here, and the reason is structural: it
+ * takes more, smaller steps, and every step re-reads the whole prefix. Cost
+ * follows ROUND COUNT, not thinking depth. So the copy below sells depth,
+ * never savings — turning this down to economise backfires.
+ */
+export const EFFORT_BLURB: Record<Effort, string> = {
+  low: "Shallowest reasoning. Often takes more small steps — usually costs more here, not less.",
+  medium: "Less reasoning per step. Measured slower AND dearer than the default on our evals.",
+  high: "The default, and the cheapest setting we have measured. Leave it here unless a build is struggling.",
+  xhigh: "Explores more before acting. Costs about the same as the default; worth it on harder builds.",
+  max: "Thinks hardest. Reach for it when correctness matters more than spend.",
+};
+
 export type Route = "question" | "edit" | "build";
 
 const ROUTE_MODEL: Record<Route, string> = {

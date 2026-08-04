@@ -16,7 +16,16 @@ import { getPluggieToken } from "@/lib/pluggie/token";
 import { getProjectInfo } from "@/lib/pluggie/mcp";
 import { buildSystemPrompt } from "@/lib/agent/system";
 import { dispatchTool, getAgentTools, scopeTools, type ToolScope } from "@/lib/agent/tools";
-import { MODELS, isModelPin, routeRequest, supportsContextManagement, type RouteDecision } from "@/lib/agent/models";
+import {
+  MODELS,
+  isEffort,
+  isModelPin,
+  routeRequest,
+  supportsContextManagement,
+  supportsEffort,
+  type Effort,
+  type RouteDecision,
+} from "@/lib/agent/models";
 import { createBuildContext } from "@/lib/agent/verify";
 import { reviewBuild } from "@/lib/agent/reviewer";
 import { estimateCostUsd } from "@/lib/agent/pricing";
@@ -138,6 +147,12 @@ export async function* runBuilder(slug: string, userMessage: string): AsyncGener
   // stale tool results instead — the agent keeps a summary of what it did.
   const manageContext = supportsContextManagement(model);
 
+  // Effort governs how many rounds the model takes, and rounds drive cost.
+  // Gated hard: Haiku 4.5 returns a 400 for this parameter, so a turn the
+  // router sent to the fast tier must not carry it even if the app pins one.
+  const effort: Effort | undefined =
+    supportsEffort(model) && isEffort(app.effortPin) ? app.effortPin : undefined;
+
   // Fresh-eyes review state (P0.4): runs once per turn, after the builder
   // stops, if the turn actually touched the app. Findings buy exactly ONE
   // repair round — never a loop.
@@ -174,6 +189,7 @@ export async function* runBuilder(slug: string, userMessage: string): AsyncGener
         system: [{ type: "text" as const, text: system, cache_control: { type: "ephemeral" as const } }],
         messages,
         tools: tools as Tool[],
+        ...(effort ? { output_config: { effort } } : {}),
         ...(manageContext
           ? {
               betas: ["compact-2026-01-12", "context-management-2025-06-27"],

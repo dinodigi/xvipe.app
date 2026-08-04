@@ -103,6 +103,23 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .modelsel:hover, .modelsel:focus-visible { border-color: var(--coral); color: var(--ink); outline: none; }
 .modelsel option { background: var(--panel, #16151d); color: var(--ink); }
 
+/* Effort slider — sits beside the model select; the value label is fixed-width
+   so the composer row doesn't twitch as you drag. */
+.effort { display: inline-flex; align-items: center; gap: 6px; color: var(--faint); }
+.effort.off { opacity: .45; }
+.effort .lbl { font: 10.5px var(--mono); }
+.effort .val { font: 10.5px var(--mono); color: var(--coral-hot); min-width: 46px; }
+.effort.off .val { color: var(--faint); }
+.effort input[type="range"] { -webkit-appearance: none; appearance: none; width: 66px; height: 14px; background: none; cursor: pointer; }
+.effort input[type="range"]:disabled { cursor: not-allowed; }
+.effort input[type="range"]::-webkit-slider-runnable-track { height: 3px; border-radius: 2px; background: var(--line); }
+.effort input[type="range"]::-moz-range-track { height: 3px; border-radius: 2px; background: var(--line); }
+.effort input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 11px; height: 11px; margin-top: -4px; border-radius: 50%; background: var(--coral); }
+.effort input[type="range"]::-moz-range-thumb { width: 11px; height: 11px; border: none; border-radius: 50%; background: var(--coral); }
+.effort input[type="range"]:disabled::-webkit-slider-thumb { background: var(--faint); }
+.effort input[type="range"]:disabled::-moz-range-thumb { background: var(--faint); }
+.effort input[type="range"]:focus-visible { outline: 2px solid var(--coral); outline-offset: 3px; border-radius: 3px; }
+
 /* End-of-turn receipt. Cost is the first thing read, hence the weight on it. */
 .ckpt { display: inline-flex; align-items: center; gap: 10px; margin-top: 8px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 8px; background: #ffffff05; font: 10.5px var(--mono); color: var(--faint); }
 .ckpt b { font-size: 12px; color: var(--ink); font-weight: 600; }

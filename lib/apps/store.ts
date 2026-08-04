@@ -35,6 +35,8 @@ export interface AppMeta {
   modelPin?: string;
   /** design-token theme applied to the app (lib/themes) */
   themeId?: string;
+  /** studio effort control: "low" | "medium" | "high" | "xhigh" | "max" */
+  effortPin?: string;
 }
 
 /* ── workspace write rules — the agent writes here, so be strict ─────────── */
