@@ -10,10 +10,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppMeta, DeployVersionInfo, TranscriptEvent, WsFile } from "@/lib/apps/store";
 import type { AgentEvent, TurnUsage } from "@/lib/agent/events";
+import { estimateCostUsd, formatUsd } from "@/lib/agent/pricing";
 
 type Item =
   | { kind: "text"; text: string }
-  | { kind: "step"; name: string; label: string; state: "wait" | "ok" | "fail"; summary?: string };
+  | { kind: "step"; name: string; label: string; state: "wait" | "ok" | "fail"; summary?: string }
+  /** end-of-turn receipt: what this build actually cost */
+  | { kind: "checkpoint"; usage: TurnUsage };
 interface Block {
   role: "user" | "agent";
   items: Item[];
@@ -73,6 +76,8 @@ export function Studio(props: {
   appsDomain?: string;
   /** where the LIVE workspace is served — the preview must show unpublished edits */
   previewDomain?: string;
+  /** short commit sha this studio is running, so deploys are verifiable */
+  build?: string;
   initialTranscript: TranscriptEvent[];
   initialFiles: WsFile[];
 }) {
@@ -83,6 +88,8 @@ export function Studio(props: {
   const [busy, setBusy] = useState(false);
   const [input, setInput] = useState("");
   const [lastUsage, setLastUsage] = useState<TurnUsage | null>(null);
+  /** Running total for this session — the number that answers "what am I spending?" */
+  const [spentUsd, setSpentUsd] = useState(0);
   const [modelPin, setModelPin] = useState<string>(app.modelPin ?? "auto");
   const msgsRef = useRef<HTMLDivElement>(null);
 
@@ -345,6 +352,9 @@ export function Studio(props: {
                 break;
               }
             }
+          } else if (ev.type === "turn_done" && ev.usage) {
+            dropReasoning();
+            cur.items.push({ kind: "checkpoint", usage: ev.usage });
           } else if (ev.type === "error") {
             cur.items.push({ kind: "text", text: `\n⚠ ${ev.message}` });
           }
@@ -387,7 +397,10 @@ export function Studio(props: {
               void refreshFiles();
               bumpPreview();
             }
-            if (ev.type === "turn_done" && ev.usage) setLastUsage(ev.usage);
+            if (ev.type === "turn_done" && ev.usage) {
+              setLastUsage(ev.usage);
+              setSpentUsd((s) => s + (ev.usage!.costUsd ?? estimateCostUsd(ev.usage!)));
+            }
           }
         }
       } catch (e) {
@@ -628,6 +641,13 @@ export function Studio(props: {
                   {block.items.map((item, j) =>
                     item.kind === "text" ? (
                       <Rich key={j} text={item.text} />
+                    ) : item.kind === "checkpoint" ? (
+                      <span key={j} className="ckpt" title={`${formatTokens(item.usage.inputTokens + item.usage.cacheReadTokens + item.usage.cacheWriteTokens)} in / ${formatTokens(item.usage.outputTokens)} out · estimated from list pricing`}>
+                        <b>{formatUsd(item.usage.costUsd ?? estimateCostUsd(item.usage))}</b>
+                        <span>{item.usage.model.replace("claude-", "")}</span>
+                        <span>{item.usage.rounds} {item.usage.rounds === 1 ? "step" : "steps"}</span>
+                        {item.usage.seconds !== undefined && <span>{item.usage.seconds}s</span>}
+                      </span>
                     ) : (
                       <span key={j} className={`step ${item.state === "wait" ? "wait" : item.state === "fail" ? "fail" : ""}`}>
                         <code>{item.label}</code>
@@ -1065,14 +1085,24 @@ export function Studio(props: {
         <span className="s">db · neon ({props.dbStatus})</span>
         {!props.endUserAuth && <span className="s">end-user auth · off</span>}
         <span className="grow" />
+        {spentUsd > 0 && (
+          <span className="s" title="Estimated from list pricing, this session only. Each reply carries its own receipt.">
+            this session · <b style={{ color: "var(--ink)" }}>{formatUsd(spentUsd)}</b>
+          </span>
+        )}
         {lastUsage && (
           <span className="s">
-            last build · {formatTokens(lastUsage.inputTokens + lastUsage.cacheReadTokens + lastUsage.cacheWriteTokens)} in (
+            last · {formatTokens(lastUsage.inputTokens + lastUsage.cacheReadTokens + lastUsage.cacheWriteTokens)} in (
             {Math.round((100 * lastUsage.cacheReadTokens) / Math.max(1, lastUsage.inputTokens + lastUsage.cacheReadTokens + lastUsage.cacheWriteTokens))}%
             cached) / {formatTokens(lastUsage.outputTokens)} out
           </span>
         )}
         <span className="s">deploys · r2 → *.{props.appsDomain ?? "xvibe.app"}</span>
+        {props.build && (
+          <span className="s" title="The commit this studio is running — check it after a deploy.">
+            build · {props.build}
+          </span>
+        )}
       </footer>
 
       {/* tools menu */}
@@ -1215,6 +1245,15 @@ function fromTranscript(events: TranscriptEvent[]): Block[] {
       if (ev.kind === "agent_text") last.items.push({ kind: "text", text: ev.text ?? "" });
       else if (ev.tool)
         last.items.push({ kind: "step", name: ev.tool.name, label: ev.tool.name, state: ev.tool.ok ? "ok" : "fail", summary: ev.tool.summary });
+    } else if (ev.kind === "system" && ev.text?.startsWith("usage: ")) {
+      // Receipts survive a reload — the transcript already records each turn's usage.
+      try {
+        const usage = JSON.parse(ev.text.slice(7)) as TurnUsage;
+        const last = blocks[blocks.length - 1];
+        if (last?.role === "agent") last.items.push({ kind: "checkpoint", usage });
+      } catch {
+        /* older transcript lines predate the receipt shape */
+      }
     }
   }
   return blocks;

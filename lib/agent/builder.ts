@@ -19,6 +19,7 @@ import { dispatchTool, getAgentTools, scopeTools, type ToolScope } from "@/lib/a
 import { MODELS, isModelPin, routeRequest, supportsContextManagement, type RouteDecision } from "@/lib/agent/models";
 import { createBuildContext } from "@/lib/agent/verify";
 import { reviewBuild } from "@/lib/agent/reviewer";
+import { estimateCostUsd } from "@/lib/agent/pricing";
 import type { AgentEvent, TurnUsage } from "@/lib/agent/events";
 import { appendTranscript, getApp, loadConversation, saveConversation, wsList } from "@/lib/apps/store";
 
@@ -36,7 +37,18 @@ const MAX_ROUNDS = 40;
  * at 64k output; everything else is far higher.)
  */
 const MAX_OUTPUT_TOKENS = 32000;
-const MAX_TURNS_KEPT = 80;
+
+/**
+ * How much conversation history a turn carries. This matters more than it
+ * looks: history is re-read every round like the tool block, and on the fast
+ * tier the API cannot compact it (context management is unavailable on Haiku),
+ * so an app with a long transcript made even a one-line question expensive —
+ * measured 59,625 cache-write tokens on a question that needed almost none.
+ *
+ * A question needs the last exchange or two; an edit needs enough to resolve
+ * "make it blue"; only a build needs the long tail.
+ */
+const TURNS_KEPT: Record<ToolScope, number> = { question: 12, edit: 24, build: 80 };
 
 const toolLabel = (name: string, input: Record<string, unknown>): string => {
   switch (name) {
@@ -59,11 +71,11 @@ const toolLabel = (name: string, input: Record<string, unknown>): string => {
  * the agent forgets what it already did. On tiers that support it we let the
  * API compact and clear instead, which preserves a summary of the history.
  */
-function trimConversation(messages: MessageParam[]): MessageParam[] {
-  if (messages.length <= MAX_TURNS_KEPT) return messages;
+function trimConversation(messages: MessageParam[], keep: number): MessageParam[] {
+  if (messages.length <= keep) return messages;
   const hasToolResult = (m: MessageParam) =>
     Array.isArray(m.content) && m.content.some((b) => (b as { type?: string }).type === "tool_result");
-  for (let i = Math.max(1, messages.length - MAX_TURNS_KEPT); i < messages.length; i++) {
+  for (let i = Math.max(1, messages.length - keep); i < messages.length; i++) {
     if (messages[i].role === "user" && !hasToolResult(messages[i])) {
       return [messages[0], ...messages.slice(i)];
     }
@@ -136,11 +148,20 @@ export async function* runBuilder(slug: string, userMessage: string): AsyncGener
   // Every build reports what it spent — nobody discovers a drained balance
   // from a 400 again. Totals accumulate across all rounds of this turn.
   const usage: TurnUsage = { model, rounds: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+  const startedAt = Date.now();
+  /** Stamp cost + duration right before the usage leaves this function. */
+  const seal = (): TurnUsage => {
+    usage.costUsd = estimateCostUsd(usage);
+    usage.seconds = Math.round((Date.now() - startedAt) / 1000);
+    return usage;
+  };
 
   try {
     for (let round = 0; round < MAX_ROUNDS; round++) {
-      // Only trim locally where the API cannot manage context for us.
-      if (!manageContext) messages = trimConversation(messages);
+      // Trim by scope always: compaction handles overflow on the capable
+      // tiers, but it does not stop a cheap turn from carrying a long history
+      // it never needed. The fast tier has no compaction at all.
+      messages = trimConversation(messages, TURNS_KEPT[scope]);
 
       const request = {
         model,
@@ -205,7 +226,7 @@ export async function* runBuilder(slug: string, userMessage: string): AsyncGener
         appendTranscript(slug, { kind: "system", text: `refusal: ${why ?? "unspecified"}` });
         yield { type: "error", message };
         saveConversation(slug, messages);
-        yield { type: "turn_done", stopReason: "refusal", usage };
+        yield { type: "turn_done", stopReason: "refusal", usage: seal() };
         return;
       }
       if (final.stop_reason === "max_tokens") {
@@ -217,7 +238,7 @@ export async function* runBuilder(slug: string, userMessage: string): AsyncGener
           message: "The builder hit its output limit mid-round, so this turn is incomplete. Send \"continue\" and it will pick up from here.",
         };
         saveConversation(slug, messages);
-        yield { type: "turn_done", stopReason: "max_tokens", usage };
+        yield { type: "turn_done", stopReason: "max_tokens", usage: seal() };
         return;
       }
 
@@ -252,8 +273,8 @@ export async function* runBuilder(slug: string, userMessage: string): AsyncGener
           }
         }
         saveConversation(slug, messages);
-        appendTranscript(slug, { kind: "system", text: `usage: ${JSON.stringify(usage)}` });
-        yield { type: "turn_done", stopReason: final.stop_reason ?? "end_turn", usage };
+        appendTranscript(slug, { kind: "system", text: `usage: ${JSON.stringify(seal())}` });
+        yield { type: "turn_done", stopReason: final.stop_reason ?? "end_turn", usage: seal() };
         return;
       }
 
@@ -293,12 +314,12 @@ export async function* runBuilder(slug: string, userMessage: string): AsyncGener
       messages.push({ role: "user", content: results });
       saveConversation(slug, messages); // persist between rounds — a dropped stream resumes cleanly
     }
-    appendTranscript(slug, { kind: "system", text: `usage: ${JSON.stringify(usage)}` });
+    appendTranscript(slug, { kind: "system", text: `usage: ${JSON.stringify(seal())}` });
     yield { type: "error", message: `Stopped after ${MAX_ROUNDS} tool rounds — send a follow-up to continue.` };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     appendTranscript(slug, { kind: "system", text: `builder error: ${message}` });
-    if (usage.rounds > 0) appendTranscript(slug, { kind: "system", text: `usage: ${JSON.stringify(usage)}` });
+    if (usage.rounds > 0) appendTranscript(slug, { kind: "system", text: `usage: ${JSON.stringify(seal())}` });
     yield { type: "error", message };
   }
 }

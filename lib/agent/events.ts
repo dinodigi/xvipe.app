@@ -21,4 +21,8 @@ export interface TurnUsage {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  /** estimated dollars for this turn (lib/agent/pricing.ts) */
+  costUsd?: number;
+  /** wall-clock seconds the turn took, so cost has context */
+  seconds?: number;
 }

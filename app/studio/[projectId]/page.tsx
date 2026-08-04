@@ -57,6 +57,9 @@ export default async function StudioPage({
         endUserAuth={Boolean(info.endUserAuth?.configured)}
         appsDomain={process.env.XVIBE_APPS_BASE_DOMAIN}
         previewDomain={process.env.XVIBE_PREVIEW_BASE_DOMAIN ?? process.env.XVIBE_APPS_BASE_DOMAIN}
+        // Which commit is actually serving — so "is my change live yet?" is
+        // answerable from the UI instead of guessed at. Render sets this.
+        build={(process.env.RENDER_GIT_COMMIT ?? process.env.XVIBE_BUILD ?? "").slice(0, 7) || undefined}
         initialTranscript={transcript}
         initialFiles={files}
       />

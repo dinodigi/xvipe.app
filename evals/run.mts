@@ -62,18 +62,9 @@ if (!selected.length) {
   process.exit(2);
 }
 
-/* ── rough cost model (verify against current pricing before quoting it) ──── */
-const PRICES: Record<string, { in: number; out: number }> = {
-  "claude-haiku-4-5": { in: 1, out: 5 },
-  "claude-sonnet-5": { in: 3, out: 15 },
-  "claude-opus-5": { in: 15, out: 75 },
-};
-const dollars = (u: { model: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number }) => {
-  const p = PRICES[u.model] ?? PRICES["claude-sonnet-5"];
-  return (
-    (u.inputTokens * p.in + u.cacheReadTokens * p.in * 0.1 + u.cacheWriteTokens * p.in * 1.25 + u.outputTokens * p.out) / 1_000_000
-  );
-};
+/* Same table the studio quotes, so a sweep and the UI never disagree. */
+const { estimateCostUsd } = await import("@/lib/agent/pricing");
+const dollars = estimateCostUsd;
 
 /* ── helpers ──────────────────────────────────────────────────────────────── */
 const listCollectionNames = async (): Promise<string[]> => {

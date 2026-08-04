@@ -103,6 +103,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .modelsel:hover, .modelsel:focus-visible { border-color: var(--coral); color: var(--ink); outline: none; }
 .modelsel option { background: var(--panel, #16151d); color: var(--ink); }
 
+/* End-of-turn receipt. Cost is the first thing read, hence the weight on it. */
+.ckpt { display: inline-flex; align-items: center; gap: 10px; margin-top: 8px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 8px; background: #ffffff05; font: 10.5px var(--mono); color: var(--faint); }
+.ckpt b { font-size: 12px; color: var(--ink); font-weight: 600; }
+.ckpt span::before { content: "·"; margin-right: 10px; opacity: .5; }
+
 /* Theme picker — swatch-first, so the choice reads as a look not a label. */
 .themegrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
 .themecard { display: flex; flex-direction: column; gap: 8px; text-align: left; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: #ffffff05; cursor: pointer; transition: border-color .14s, background .14s; }
