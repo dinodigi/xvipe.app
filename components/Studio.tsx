@@ -145,6 +145,19 @@ export function Studio(props: {
   const [published, setPublished] = useState(Boolean(app.publishedVersion));
   const [agentW, setAgentW] = useState(392);
   const dividerRef = useRef<HTMLDivElement>(null);
+  /** Lets Stop cut the request client-side the instant it is pressed. */
+  const chatAbortRef = useRef<AbortController | null>(null);
+
+  const stopBuild = useCallback(async () => {
+    chatAbortRef.current?.abort();
+    // Also tell the server: closing our stream alone would leave the loop
+    // running there, still spending.
+    try {
+      await fetch(`/api/apps/${app.slug}/chat`, { method: "DELETE" });
+    } catch {
+      /* the abort above already stopped our side */
+    }
+  }, [app.slug]);
 
   useEffect(() => {
     const h = window.location.hostname;
@@ -368,10 +381,13 @@ export function Studio(props: {
         });
 
       try {
+        const ac = new AbortController();
+        chatAbortRef.current = ac;
         const res = await fetch(`/api/apps/${app.slug}/chat`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ message, model: modelPin, effort }),
+          signal: ac.signal,
         });
         if (!res.ok || !res.body) {
           const err = (await res.json().catch(() => ({}))) as { error?: string };
@@ -410,8 +426,12 @@ export function Studio(props: {
           }
         }
       } catch (e) {
-        apply({ type: "error", message: e instanceof Error ? e.message : String(e) });
+        // An abort is the user pressing Stop, not a failure to report.
+        if (!(e instanceof DOMException && e.name === "AbortError")) {
+          apply({ type: "error", message: e instanceof Error ? e.message : String(e) });
+        }
       } finally {
+        chatAbortRef.current = null;
         setBusy(false);
         void refreshFiles();
         bumpPreview();
@@ -515,6 +535,8 @@ export function Studio(props: {
       { label: "Device: tablet · 768", run: () => setDevW("768") },
       { label: "Device: phone · 390", run: () => setDevW("390") },
       { label: "New app…", run: () => void newApp() },
+      { label: "Start fresh — clear this chat (keeps files)", run: () => void resetApp(false) },
+      { label: "Start fresh — clear chat AND app files", run: () => void resetApp(true) },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [publish, openTool, bumpPreview],
@@ -545,6 +567,38 @@ export function Studio(props: {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  /**
+   * Clears the STUDIO's memory of this app. Pairs with a Pluggie project
+   * reset: that wipes the backend, this stops the builder resuming a project
+   * whose collections no longer exist.
+   */
+  const resetApp = useCallback(
+    async (files: boolean) => {
+      const what = files ? "this chat AND every file in the app" : "this chat";
+      if (!window.confirm(`Clear ${what}?\n\nCollections live in Pluggie and are not touched — reset those there separately.\n\nThis cannot be undone.`)) return;
+      try {
+        const res = await fetch(`/api/apps/${app.slug}/reset`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ files }),
+        });
+        const body = (await res.json()) as { ok?: boolean; cleared?: string; error?: string };
+        if (res.ok && body.ok) {
+          setBlocks([]);
+          setSpentUsd(0);
+          setLastUsage(null);
+          void refreshFiles();
+          bumpPreview();
+          setToast({ ok: true, title: `Cleared ${body.cleared}.`, sub: "The builder starts from scratch on your next message." });
+        } else setToast({ ok: false, title: "Couldn't clear", sub: body.error });
+      } catch (e) {
+        setToast({ ok: false, title: "Couldn't clear", sub: e instanceof Error ? e.message : String(e) });
+      }
+      setTimeout(() => setToast(null), 5200);
+    },
+    [app.slug, refreshFiles, bumpPreview],
+  );
 
   const newApp = useCallback(async () => {
     const name = window.prompt("Name the new app:");
@@ -690,9 +744,17 @@ export function Studio(props: {
                   }
                 }}
               />
-              <button className="send" aria-label="Send" disabled={busy || !input.trim()} onClick={() => void send(input)}>
-                ↑
-              </button>
+              {busy ? (
+                <button className="send stop" aria-label="Stop the builder" title="Stop — work so far is saved" onClick={() => void stopBuild()}>
+                  <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                    <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" />
+                  </svg>
+                </button>
+              ) : (
+                <button className="send" aria-label="Send" disabled={!input.trim()} onClick={() => void send(input)}>
+                  ↑
+                </button>
+              )}
             </div>
             <div className="hint">
               <select

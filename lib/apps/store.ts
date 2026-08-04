@@ -289,6 +289,24 @@ export function saveConversation(slug: string, turns: unknown[]): void {
   writeFileSync(join(appDir(slug), "conversation.json"), JSON.stringify(turns));
 }
 
+/**
+ * Forget this app's history: the model conversation and the visible chat.
+ * A Pluggie project reset wipes the BACKEND, not the studio's memory of what
+ * it built — without this, the next message resumes a project whose
+ * collections no longer exist. Workspace files are kept unless `files` is set.
+ */
+export function clearAppHistory(slug: string, opts: { files?: boolean } = {}): void {
+  const dir = appDir(slug);
+  rmSync(join(dir, "conversation.json"), { force: true });
+  rmSync(join(dir, "transcript.jsonl"), { force: true });
+  if (opts.files) {
+    const ws = wsDir(slug);
+    rmSync(ws, { recursive: true, force: true });
+    mkdirSync(ws, { recursive: true });
+  }
+  updateApp(slug, {});
+}
+
 export function loadConversation(slug: string): unknown[] {
   const file = join(appDir(slug), "conversation.json");
   if (!existsSync(file)) return [];

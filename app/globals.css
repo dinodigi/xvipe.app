@@ -103,6 +103,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .modelsel:hover, .modelsel:focus-visible { border-color: var(--coral); color: var(--ink); outline: none; }
 .modelsel option { background: var(--panel, #16151d); color: var(--ink); }
 
+/* Stop replaces Send while a build runs — same footprint, unmistakably different. */
+.send.stop { background: var(--coral-hot); color: #fff; display: grid; place-items: center; }
+.send.stop:hover { filter: brightness(1.1); }
+
 /* Effort slider — sits beside the model select; the value label is fixed-width
    so the composer row doesn't twitch as you drag. */
 .effort { display: inline-flex; align-items: center; gap: 6px; color: var(--faint); }

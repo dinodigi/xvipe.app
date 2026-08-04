@@ -92,7 +92,12 @@ function trimConversation(messages: MessageParam[], keep: number): MessageParam[
   return messages;
 }
 
-export async function* runBuilder(slug: string, userMessage: string): AsyncGenerator<AgentEvent> {
+export async function* runBuilder(
+  slug: string,
+  userMessage: string,
+  /** aborts when the user hits Stop, or the client disconnects */
+  signal?: AbortSignal,
+): AsyncGenerator<AgentEvent> {
   const app = getApp(slug);
   if (!app) {
     yield { type: "error", message: `Unknown app: ${slug}` };
@@ -173,6 +178,16 @@ export async function* runBuilder(slug: string, userMessage: string): AsyncGener
 
   try {
     for (let round = 0; round < MAX_ROUNDS; round++) {
+      // Stop is checked at the round boundary so the conversation is always
+      // saved in a consistent state — never mid tool_use/tool_result pair.
+      if (signal?.aborted) {
+        saveConversation(slug, messages);
+        appendTranscript(slug, { kind: "system", text: "stopped by the user" });
+        yield { type: "error", message: "Stopped. Everything up to this point is saved — send a message to carry on." };
+        yield { type: "turn_done", stopReason: "stopped", usage: seal() };
+        return;
+      }
+
       // Trim by scope always: compaction handles overflow on the capable
       // tiers, but it does not stop a cheap turn from carrying a long history
       // it never needed. The fast tier has no compaction at all.
@@ -208,7 +223,12 @@ export async function* runBuilder(slug: string, userMessage: string): AsyncGener
 
       // The beta namespace serves plain requests too, so one call site covers
       // both tiers; only the context-management fields differ.
-      const stream = anthropic.beta.messages.stream(request as Parameters<typeof anthropic.beta.messages.stream>[0]);
+      // The signal also cuts the in-flight model call, so Stop is immediate
+      // rather than "finishes the current round first".
+      const stream = anthropic.beta.messages.stream(
+        request as Parameters<typeof anthropic.beta.messages.stream>[0],
+        signal ? { signal } : undefined,
+      );
 
       let turnText = "";
       for await (const event of stream) {
@@ -333,6 +353,15 @@ export async function* runBuilder(slug: string, userMessage: string): AsyncGener
     appendTranscript(slug, { kind: "system", text: `usage: ${JSON.stringify(seal())}` });
     yield { type: "error", message: `Stopped after ${MAX_ROUNDS} tool rounds — send a follow-up to continue.` };
   } catch (e) {
+    // An aborted model call surfaces as an exception; that is a Stop, not a
+    // failure, and the work so far is still worth keeping.
+    if (signal?.aborted) {
+      saveConversation(slug, messages);
+      appendTranscript(slug, { kind: "system", text: "stopped by the user" });
+      yield { type: "error", message: "Stopped. Everything up to this point is saved — send a message to carry on." };
+      yield { type: "turn_done", stopReason: "stopped", usage: seal() };
+      return;
+    }
     const message = e instanceof Error ? e.message : String(e);
     appendTranscript(slug, { kind: "system", text: `builder error: ${message}` });
     if (usage.rounds > 0) appendTranscript(slug, { kind: "system", text: `usage: ${JSON.stringify(seal())}` });
