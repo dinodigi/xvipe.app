@@ -15,7 +15,7 @@ type ContentBlockParam = Anthropic.Beta.BetaContentBlockParam;
 import { getPluggieToken } from "@/lib/pluggie/token";
 import { getProjectInfo } from "@/lib/pluggie/mcp";
 import { buildSystemPrompt } from "@/lib/agent/system";
-import { dispatchTool, getAgentTools } from "@/lib/agent/tools";
+import { dispatchTool, getAgentTools, scopeTools, type ToolScope } from "@/lib/agent/tools";
 import { MODELS, isModelPin, routeRequest, supportsContextManagement, type RouteDecision } from "@/lib/agent/models";
 import { createBuildContext } from "@/lib/agent/verify";
 import { reviewBuild } from "@/lib/agent/reviewer";
@@ -102,9 +102,16 @@ export async function* runBuilder(slug: string, userMessage: string): AsyncGener
   };
 
   // Orient every session (CONNECTION.md §2) + read the LIVE tool surface.
-  const [info, tools, decision] = await Promise.all([getProjectInfo(mcpToken), getAgentTools(mcpToken), decide()]);
+  const [info, allTools, decision] = await Promise.all([getProjectInfo(mcpToken), getAgentTools(mcpToken), decide()]);
   const system = buildSystemPrompt(app, info);
   const model = decision.model;
+
+  // Scope the tool block to the turn. A pinned or forced model bypasses the
+  // router, so it has no classification to trust — give those everything.
+  const scope: ToolScope =
+    decision.route === "question" || decision.route === "edit" ? decision.route : "build";
+  const tools = scopeTools(allTools, scope);
+
   yield { type: "route", route: decision.route, model, why: decision.why };
   appendTranscript(slug, { kind: "system", text: `route: ${decision.route} → ${model} (${decision.why})` });
 

@@ -116,6 +116,10 @@ export interface AnthropicTool {
   name: string;
   description: string;
   input_schema: Record<string, unknown>;
+  /** set on the long tail so its schema loads on demand, not every round */
+  defer_loading?: boolean;
+  /** server-tool discriminator (tool search); absent on ordinary tools */
+  type?: string;
 }
 
 const WORKSPACE_TOOLS: AnthropicTool[] = [
@@ -196,6 +200,73 @@ const WORKSPACE_TOOLS: AnthropicTool[] = [
     },
   },
 ];
+
+/**
+ * Cost control: the tool block is re-read on EVERY round of a turn, and it is
+ * by far the largest thing in the prefix (measured 2026-08-01: 38,123 tokens
+ * of schema against a 5,043-token system prompt — `define_collection` alone
+ * is 10,165 of it). Sending the authoring surface to a turn that is only
+ * restyling a page is the single most wasteful thing the loop does.
+ *
+ * So the surface is scoped to what the router already decided the turn is.
+ * Anything not clearly a frontend-only change routes to "build" and gets
+ * everything, so scoping can cost capability only when the router is wrong —
+ * and the router is deliberately biased toward "build".
+ */
+
+/** Read-only: enough to answer a question about the app without changing it. */
+const QUESTION_TOOLS = new Set([
+  "list_app_files", "read_app_file",
+  "list_collections", "describe_collection", "query_entries", "count_entries", "get_deliveries",
+]);
+
+/** Frontend-only work: files, look, and reading the data the UI renders. */
+const EDIT_TOOLS = new Set([
+  ...QUESTION_TOOLS,
+  "write_app_file", "delete_app_file", "set_app_theme", "set_app_meta",
+  "probe_app", "get_changes", "send_feedback",
+]);
+
+/**
+ * Builds legitimately need the authoring surface, so scoping cannot help them.
+ * Instead the everyday tools stay resident and the long tail is deferred:
+ * Claude searches for what it needs and the schema is APPENDED, which leaves
+ * the cached prefix intact rather than invalidating it.
+ *
+ * Resident = what a typical build touches every time (measured against eval
+ * traces). Everything else — transactions, aggregates, CAS, schedules,
+ * inbound mail, plugins, SEO, assets, trash, versions — is real capability
+ * the agent reaches for occasionally and should not pay for constantly.
+ */
+const BUILD_RESIDENT = new Set([
+  "list_collections", "describe_collection", "define_collection",
+  "create_entry", "bulk_create_entries", "get_client_code",
+  "mint_delivery_token", "probe_app",
+  "write_app_file", "read_app_file", "list_app_files", "delete_app_file",
+  "set_app_theme", "set_app_meta", "send_feedback",
+]);
+
+/**
+ * Anthropic's server-side tool-search tool. Server tools carry ONLY `type` and
+ * `name` — adding a description or input_schema is rejected. It must never be
+ * deferred itself, and at least one ordinary tool must stay resident too.
+ */
+const TOOL_SEARCH = { type: "tool_search_tool_regex_20251119", name: "tool_search_tool_regex" };
+
+export type ToolScope = "question" | "edit" | "build";
+
+/** Narrow a session's tools to the turn's scope. */
+export function scopeTools(tools: AnthropicTool[], scope: ToolScope): AnthropicTool[] {
+  if (scope !== "build") {
+    const keep = scope === "question" ? QUESTION_TOOLS : EDIT_TOOLS;
+    return tools.filter((t) => keep.has(t.name));
+  }
+  // Build: everything stays available, but only the everyday set is loaded.
+  const scoped = tools.map((t) =>
+    BUILD_RESIDENT.has(t.name) ? t : { ...t, defer_loading: true },
+  );
+  return [TOOL_SEARCH as unknown as AnthropicTool, ...scoped];
+}
 
 /** Assemble the session tool surface from the LIVE Pluggie tools/list. */
 export async function getAgentTools(mcpToken: string): Promise<AnthropicTool[]> {

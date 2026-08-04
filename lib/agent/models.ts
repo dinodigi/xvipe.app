@@ -65,7 +65,7 @@ export async function routeRequest(
       messages: [
         {
           role: "user",
-          content: `The app already has ${fileCount} files. The user's request:\n"""\n${message.slice(0, 2000)}\n"""\nPick exactly one route:\n- "question": asking or explaining only — no change requested\n- "edit": a small tweak (copy, colors, one element or page)\n- "build": features, new pages, data-model or flow changes, anything multi-file\nWhen unsure pick "build". Reply: {"route":"..."}`,
+          content: `The app already has ${fileCount} files. The user's request:\n"""\n${message.slice(0, 2000)}\n"""\nPick exactly one route:\n- "question": asking or explaining only — no change to the app requested\n- "edit": a FRONTEND-ONLY change — copy, colours, layout, styling, one element or page. Nothing that touches stored data, fields, rules, schedules or emails.\n- "build": anything else — new features or pages, ANY change to the data model, access rules, workflows, notifications or background jobs, and anything spanning several files\nA turn routed "edit" is given only frontend tools, so if the request might need the backend at all, pick "build". When unsure pick "build". Reply: {"route":"..."}`,
         },
       ],
     });

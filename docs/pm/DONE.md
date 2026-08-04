@@ -1,5 +1,41 @@
 # Shipped & verified
 
+## 2026-08-04 — Cost: the prefix problem, measured and halved
+**Why it mattered:** the operator's objection to Replit was price. Measured
+first instead of guessing — every round of every turn re-read a **43,179-token
+prefix**, of which **38,123 was tool schemas** and only 5,043 the system
+prompt. `define_collection` alone was 10,165 tokens, re-read on every round of
+every turn — including one that only changed a colour.
+
+**Two fixes, both keeping full capability:**
+- **Route-scoped tools.** The router already classifies each turn; now the
+  tool block follows. Questions get 7 read-only tools, frontend-only edits get
+  14. The router prompt was tightened so "edit" means presentation-only and
+  anything touching data, rules, schedules or email routes to "build" — and
+  it stays biased toward "build", so scoping can only cost capability when the
+  router is wrong.
+- **Deferred loading + tool search on builds.** Builds legitimately need the
+  authoring surface, so scoping cannot help them. Instead 16 everyday tools
+  stay resident and the other 42 are `defer_loading: true`; Claude searches
+  and the schema is *appended*, leaving the cached prefix intact.
+
+**Measured on the real endpoint** (count_tokens rejects server tools):
+
+| route | loaded/total | prefix | cut |
+|---|---|---|---|
+| question | 7/7 | 10,411 | −76% |
+| edit | 14/14 | 12,610 | −71% |
+| build | 16/58 | 20,084 | −53% |
+
+**End-to-end:** guestbook eval **$0.26, was $0.43–0.46** for the identical task
+and all 11 assertions. `nightly-cleanup` also passed — it needs
+`define_schedule`, which is deferred, so tool search is confirmed working
+rather than assumed.
+
+**Still on the table:** `output_config.effort` (Sonnet 5 runs at `high` by
+default; `medium` gives fewer, more consolidated rounds — needs an eval A/B
+since it trades quality), and trimming the 5k system prompt.
+
 ## 2026-08-01 — Theme editor (operator-flagged priority)
 - **Six design-token themes** (`lib/themes/`), each aimed at a domain XVibe
   actually builds for: Consultation (clinics, legal), Storefront (salons,
