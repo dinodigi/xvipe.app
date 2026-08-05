@@ -14,7 +14,8 @@
 import { callTool, listTools } from "@/lib/pluggie/mcp";
 import { DELIVERY_BASE } from "@/lib/pluggie/delivery";
 import { syncDeliveryToken } from "@/lib/deploy/kv";
-import { createBuildContext, verifyAppFile, type BuildContext } from "@/lib/agent/verify";
+import { convergenceWait, createBuildContext, verifyAppFile, type BuildContext } from "@/lib/agent/verify";
+import { teardownBackend } from "@/lib/agent/teardown";
 import { isTranspilable, transpileAppFile } from "@/lib/agent/transpile";
 import { THEMES, getTheme } from "@/lib/themes";
 import { applyTheme } from "@/lib/themes/apply";
@@ -137,12 +138,39 @@ const WORKSPACE_TOOLS: AnthropicTool[] = [
     },
   },
   {
+    name: "edit_app_file",
+    description:
+      "Change PART of an existing app file: replaces old_string with new_string, in place. Prefer this over write_app_file for anything short of a rewrite — write_app_file re-sends the whole file, which is slow and expensive on a file of any size. old_string must appear EXACTLY ONCE (include surrounding lines to make it unique); the edit is refused otherwise rather than guessing which match you meant. The result is parse-checked and transpiled exactly like a full write.",
+    input_schema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "workspace-relative path of an existing file" },
+        old_string: { type: "string", description: "exact text to replace — must be unique in the file" },
+        new_string: { type: "string", description: "replacement text" },
+      },
+      required: ["path", "old_string", "new_string"],
+    },
+  },
+  {
     name: "read_app_file",
     description: "Read one file from the app workspace.",
     input_schema: {
       type: "object",
       properties: { path: { type: "string" } },
       required: ["path"],
+    },
+  },
+  {
+    name: "teardown_backend",
+    description:
+      "Delete EVERY collection in this project, in a working order. Use this when the user asks to wipe/reset the backend or start fresh — do not loop delete_collection yourself. delete_collection refuses while another collection points a relation field at the target, and a relation CYCLE (A ⇄ B) cannot be resolved by ordering at all; this computes the order and strips relation fields where it has to. Destructive and irreversible: requires confirm:true. Pass dryRun:true first if you want to show the user the plan.",
+    input_schema: {
+      type: "object",
+      properties: {
+        confirm: { type: "boolean", description: "must be true — this deletes all collections and their data" },
+        dryRun: { type: "boolean", description: "report the plan without deleting anything" },
+      },
+      required: ["confirm"],
     },
   },
   {
@@ -223,7 +251,7 @@ const QUESTION_TOOLS = new Set([
 /** Frontend-only work: files, look, and reading the data the UI renders. */
 const EDIT_TOOLS = new Set([
   ...QUESTION_TOOLS,
-  "write_app_file", "delete_app_file", "set_app_theme", "set_app_meta",
+  "write_app_file", "edit_app_file", "delete_app_file", "set_app_theme", "set_app_meta",
   "probe_app", "get_changes", "send_feedback",
 ]);
 
@@ -242,7 +270,7 @@ const BUILD_RESIDENT = new Set([
   "list_collections", "describe_collection", "define_collection",
   "create_entry", "bulk_create_entries", "get_client_code",
   "mint_delivery_token", "probe_app",
-  "write_app_file", "read_app_file", "list_app_files", "delete_app_file",
+  "write_app_file", "edit_app_file", "read_app_file", "list_app_files", "delete_app_file",
   "set_app_theme", "set_app_meta", "send_feedback",
 ]);
 
@@ -295,6 +323,80 @@ const preview = (v: unknown, n = 160) => {
   return s.length > n ? s.slice(0, n) + "…" : s;
 };
 
+/**
+ * The one path a file takes onto disk, whether it arrived whole
+ * (write_app_file) or as a patch (edit_app_file): parse-check + API-lint,
+ * then write, then transpile TS/JSX to a browser-ready sibling. Sharing it is
+ * the point — an edit that skipped verification would be a hole in P0.2.
+ */
+async function landAppFile(
+  slug: string,
+  path: string,
+  content: string,
+  mcpToken: string,
+  bctx: BuildContext,
+  verb: "wrote" | "edited",
+): Promise<ToolOutcome> {
+  const v = await verifyAppFile(path, content, mcpToken, bctx);
+  if (v.blockers.length) {
+    return {
+      result: {
+        error:
+          verb === "edited"
+            ? "File NOT changed — the result would not parse. Check new_string, then retry."
+            : "File NOT written — syntax errors. Fix them and resend the complete file.",
+        problems: v.blockers,
+      },
+      isError: true,
+      summary: `✗ ${path} — ${preview(v.blockers[0], 90)}`,
+    };
+  }
+  const file = wsWrite(slug, path, content);
+  const changed = [file.path];
+  const extras: Record<string, unknown> = {};
+
+  // .ts / .tsx / .jsx compile to a sibling .js right here, so the workspace
+  // stays browser-ready and the preview never needs a build step.
+  if (isTranspilable(path)) {
+    const out = await transpileAppFile(path, content);
+    const compiled = wsWrite(slug, out.path, out.code);
+    changed.push(compiled.path);
+    extras.compiledTo = compiled.path;
+    // JSX output imports preact/jsx-runtime — make sure the runtime is
+    // actually present rather than trusting the agent to remember it.
+    if (/\.(tsx|jsx)$/i.test(path) && !wsExists(slug, VENDOR_PREACT_PATH)) {
+      wsWrite(slug, VENDOR_PREACT_PATH, readVendoredPreact());
+      changed.push(VENDOR_PREACT_PATH);
+      extras.runtimeAdded = `${VENDOR_PREACT_PATH} — reference it with the import map in index.html (see the contract).`;
+    }
+  }
+
+  const clean = v.findings.length === 0;
+  return {
+    result: {
+      ok: clean,
+      ...file,
+      ...extras,
+      ...(v.findings.length ? { apiLint: v.findings } : {}),
+      ...(v.notes.length ? { api: v.notes } : {}),
+    },
+    isError: !clean,
+    summary: clean
+      ? `${verb} ${file.path}${extras.compiledTo ? ` → ${extras.compiledTo}` : ""} (${file.bytes} B)${v.notes.length ? " · api-lint ok" : ""}`
+      : `${verb} ${file.path} — ${preview(v.findings[0], 90)}`,
+    filesChanged: changed,
+  };
+}
+
+/** The collection a delivery path reads, e.g. "/api/v1/tasks?x=1" → "tasks". */
+const collectionOf = (p: string): string => p.replace(/^\/api\/v1\//, "").split(/[?/#]/)[0] ?? "";
+
+/** Row-level writes — they take the same ~15s to show up on the delivery API. */
+const ROW_WRITES = new Set([
+  "create_entry", "bulk_create_entries", "update_entry", "update_entry_if", "delete_entry",
+  "restore_entry", "restore_entry_version",
+]);
+
 /** Execute one tool call on behalf of the builder. */
 export async function dispatchTool(
   slug: string,
@@ -307,51 +409,70 @@ export async function dispatchTool(
   try {
     /* ── workspace tools ── */
     if (name === "write_app_file") {
+      return landAppFile(slug, String(input.path), String(input.content), mcpToken, bctx, "wrote");
+    }
+    if (name === "edit_app_file") {
       const path = String(input.path);
-      const content = String(input.content);
-      // P0.2 sight: parse-check + API-lint before anything lands on disk.
-      const v = await verifyAppFile(path, content, mcpToken, bctx);
-      if (v.blockers.length) {
+      const oldStr = String(input.old_string ?? "");
+      const newStr = String(input.new_string ?? "");
+      if (!oldStr) {
         return {
-          result: { error: "File NOT written — syntax errors. Fix them and resend the complete file.", problems: v.blockers },
+          result: { error: "old_string is required and must not be empty. To create a file or replace it wholesale, use write_app_file." },
           isError: true,
-          summary: `✗ ${path} — ${preview(v.blockers[0], 90)}`,
+          summary: `edit ${path}: empty old_string`,
         };
       }
-      const file = wsWrite(slug, path, content);
-      const changed = [file.path];
-      const extras: Record<string, unknown> = {};
-
-      // .ts / .tsx / .jsx compile to a sibling .js right here, so the workspace
-      // stays browser-ready and the preview never needs a build step.
-      if (isTranspilable(path)) {
-        const out = await transpileAppFile(path, content);
-        const compiled = wsWrite(slug, out.path, out.code);
-        changed.push(compiled.path);
-        extras.compiledTo = compiled.path;
-        // JSX output imports preact/jsx-runtime — make sure the runtime is
-        // actually present rather than trusting the agent to remember it.
-        if (/\.(tsx|jsx)$/i.test(path) && !wsExists(slug, VENDOR_PREACT_PATH)) {
-          wsWrite(slug, VENDOR_PREACT_PATH, readVendoredPreact());
-          changed.push(VENDOR_PREACT_PATH);
-          extras.runtimeAdded = `${VENDOR_PREACT_PATH} — reference it with the import map in index.html (see the contract).`;
-        }
+      let current: string;
+      try {
+        current = wsRead(slug, path);
+      } catch {
+        return {
+          result: { error: `No such file: ${path}. Use write_app_file to create it, or list_app_files to check the name.` },
+          isError: true,
+          summary: `edit ${path}: not found`,
+        };
       }
-
-      const clean = v.findings.length === 0;
+      // split/length beats a global regex here: old_string is literal text and
+      // may contain regex metacharacters.
+      const hits = current.split(oldStr).length - 1;
+      if (hits === 0) {
+        return {
+          result: { error: `old_string was not found in ${path}. It must match EXACTLY, including indentation and line breaks — read_app_file first if you are unsure.` },
+          isError: true,
+          summary: `edit ${path}: no match`,
+        };
+      }
+      if (hits > 1) {
+        return {
+          result: { error: `old_string matches ${hits} times in ${path}. Include enough surrounding context to make it unique — the edit is refused rather than guessing which one you meant.` },
+          isError: true,
+          summary: `edit ${path}: ${hits} matches`,
+        };
+      }
+      return landAppFile(slug, path, current.replace(oldStr, newStr), mcpToken, bctx, "edited");
+    }
+    if (name === "teardown_backend") {
+      if (!input.confirm) {
+        return {
+          result: { error: "teardown_backend deletes every collection and all of its data, irreversibly. Confirm with the user first, then pass confirm:true. Pass dryRun:true to show them the plan." },
+          isError: true,
+          summary: "teardown_backend: confirm required",
+        };
+      }
+      const rep = await teardownBackend(mcpToken, { dryRun: Boolean(input.dryRun) });
+      if (!rep.dryRun) {
+        bctx.collections.clear();
+        for (const n of rep.deleted) bctx.converging.set(n, Date.now());
+      }
+      const ok = rep.remaining.length === 0;
       return {
-        result: {
-          ok: clean,
-          ...file,
-          ...extras,
-          ...(v.findings.length ? { apiLint: v.findings } : {}),
-          ...(v.notes.length ? { api: v.notes } : {}),
-        },
-        isError: !clean,
-        summary: clean
-          ? `wrote ${file.path}${extras.compiledTo ? ` → ${extras.compiledTo}` : ""} (${file.bytes} B)${v.notes.length ? " · api-lint ok" : ""}`
-          : `wrote ${file.path} — ${preview(v.findings[0], 90)}`,
-        filesChanged: changed,
+        result: rep,
+        isError: !ok,
+        summary: rep.dryRun
+          ? `teardown plan: ${rep.deleted.length} collection(s)`
+          : ok
+            ? `deleted ${rep.deleted.length} collection(s)${rep.brokeCycles.length ? ` · broke ${rep.brokeCycles.length} relation cycle(s)` : ""}`
+            : `deleted ${rep.deleted.length} — ${rep.remaining.length} still standing`,
       };
     }
     if (name === "probe_app") {
@@ -366,6 +487,16 @@ export async function dispatchTool(
       const paths = Array.isArray(input.paths) ? input.paths.map(String).slice(0, 6) : [];
       if (!paths.length) {
         return { result: { error: 'Pass paths: ["/api/v1/…"]' }, isError: true, summary: "probe_app: no paths given" };
+      }
+      // A probe fired inside Pluggie's ~15s delivery convergence window reports
+      // a perfectly healthy schema as broken — and the agent then "fixes" code
+      // that was never wrong. Wait it out once, for the slowest path, so the
+      // answer below means something either way.
+      const wait = Math.max(0, ...paths.map((p) => convergenceWait(collectionOf(p), bctx)));
+      let converged: string | undefined;
+      if (wait > 0) {
+        await new Promise((r) => setTimeout(r, wait));
+        converged = `Waited ${Math.ceil(wait / 1000)}s for a just-changed collection to reach the delivery layer. These results are POST-convergence: an empty or 404 answer here is real, not a timing artefact — do not add retries or sleeps to the app to work around it.`;
       }
       const probes: Record<string, unknown>[] = [];
       for (const p of paths) {
@@ -397,10 +528,13 @@ export async function dispatchTool(
       return {
         result: {
           probes,
+          ...(converged ? { convergence: converged } : {}),
           note: "fields = what the app actually receives after publicRead projection. Empty fields on a 200 = fix publicRead on the collection, never the client.",
         },
         isError: false,
-        summary: issues ? `probed ${probes.length} endpoint(s) — ${issues} issue(s) to read` : `probed ${probes.length} endpoint(s) — all healthy`,
+        summary:
+          (issues ? `probed ${probes.length} endpoint(s) — ${issues} issue(s) to read` : `probed ${probes.length} endpoint(s) — all healthy`) +
+          (wait > 0 ? ` (after ${Math.ceil(wait / 1000)}s convergence wait)` : ""),
       };
     }
     if (name === "read_app_file") {
@@ -441,6 +575,33 @@ export async function dispatchTool(
     /* ── Pluggie passthroughs with custody/snapshot interceptions ── */
     if (!PLUGGIE_ALLOWLIST.has(name)) {
       return { result: { error: `Unknown tool: ${name}` }, isError: true, summary: `unknown tool ${name}` };
+    }
+
+    // Two define_collection misfires that have each cost a whole session. Both
+    // are answered here, on the FIRST call, rather than letting the model
+    // theorize its way through twenty identical rejections.
+    if (name === "define_collection") {
+      const shapeless = input.fields === undefined || (Array.isArray(input.fields) && input.fields.length === 0);
+      if (shapeless && input.addFields === undefined && input.confirm) {
+        return {
+          result: {
+            error:
+              "define_collection replaces a collection's shape — it does not delete one. To remove a single collection use delete_collection { name, confirm: true }. To wipe every collection (it works out the relation order and breaks cycles for you) use teardown_backend { confirm: true }.",
+          },
+          isError: true,
+          summary: "define_collection used as a delete → point at delete_collection",
+        };
+      }
+      if (typeof input.fields === "string" || typeof input.addFields === "string") {
+        return {
+          result: {
+            error:
+              'fields must be a JSON ARRAY of field objects, but arrived as a string. Re-send this one call with the value typed as a real array — [{"name":"title","type":"text"}] — not as a quoted JSON blob. Nothing is wrong with the tool or the platform: other calls in this session used arrays successfully, so this is a formatting slip in this call alone.',
+          },
+          isError: true,
+          summary: "define_collection: fields arrived as a string, not an array",
+        };
+      }
     }
 
     if (name === "mint_delivery_token") {
@@ -492,9 +653,15 @@ export async function dispatchTool(
     }
 
     const result = await callTool<unknown>(name, input, mcpToken);
-    // schema changed mid-build → the API-lint cache must re-describe it
+    // Nothing reaches the delivery layer instantly (~15s). Record WHEN, so a
+    // read inside that window waits instead of reporting a false empty — this
+    // covers rows as well as schema, which is the case that had the agent
+    // sprinkling its own setTimeouts into shipped app code.
     if (name === "define_collection" || name === "delete_collection") {
-      bctx.collections.delete(String(input.name));
+      bctx.collections.delete(String(input.name)); // API-lint must re-describe it
+      bctx.converging.set(String(input.name), Date.now());
+    } else if (ROW_WRITES.has(name) && typeof input.collection === "string") {
+      bctx.converging.set(input.collection, Date.now());
     }
     return { result, isError: false, summary: summarize(name, input, result) };
   } catch (e) {

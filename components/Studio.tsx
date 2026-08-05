@@ -535,8 +535,9 @@ export function Studio(props: {
       { label: "Device: tablet · 768", run: () => setDevW("768") },
       { label: "Device: phone · 390", run: () => setDevW("390") },
       { label: "New app…", run: () => void newApp() },
-      { label: "Start fresh — clear this chat (keeps files)", run: () => void resetApp(false) },
-      { label: "Start fresh — clear chat AND app files", run: () => void resetApp(true) },
+      { label: "Start fresh — clear this chat (keeps files)", run: () => void resetApp({}) },
+      { label: "Start fresh — clear chat AND app files", run: () => void resetApp({ files: true }) },
+      { label: "Start fresh — wipe EVERYTHING, backend included", run: () => void resetApp({ files: true, backend: true }) },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [publish, openTool, bumpPreview],
@@ -569,33 +570,66 @@ export function Studio(props: {
   }, []);
 
   /**
-   * Clears the STUDIO's memory of this app. Pairs with a Pluggie project
-   * reset: that wipes the backend, this stops the builder resuming a project
-   * whose collections no longer exist.
+   * Clears the STUDIO's memory of this app, and optionally the backend with it.
+   *
+   * The chat/files half and the collections half used to be separate chores in
+   * separate places, and the seam between them is where a reset got stuck: a
+   * clean studio still talking to a populated project, or the reverse. `backend`
+   * closes it — one action, one confirmation, everything gone.
    */
   const resetApp = useCallback(
-    async (files: boolean) => {
-      const what = files ? "this chat AND every file in the app" : "this chat";
-      if (!window.confirm(`Clear ${what}?\n\nCollections live in Pluggie and are not touched — reset those there separately.\n\nThis cannot be undone.`)) return;
+    async ({ files = false, backend = false }: { files?: boolean; backend?: boolean }) => {
+      const what = [
+        "this chat",
+        files && "every file in the app",
+        backend && "EVERY collection in Pluggie, and all of its data",
+      ]
+        .filter(Boolean)
+        .join(", ");
+      const tail = backend
+        ? "The backend teardown works out the relation order for you, including cycles."
+        : "Collections live in Pluggie and are NOT touched — clear those separately if you want the data gone.";
+      if (!window.confirm(`Clear ${what}?\n\n${tail}\n\nThis cannot be undone.`)) return;
       try {
         const res = await fetch(`/api/apps/${app.slug}/reset`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ files }),
+          body: JSON.stringify({ files, backend }),
         });
-        const body = (await res.json()) as { ok?: boolean; cleared?: string; error?: string };
+        const body = (await res.json()) as {
+          ok?: boolean;
+          cleared?: string;
+          error?: string;
+          backend?: { deleted: string[]; brokeCycles: string[]; remaining: string[] };
+        };
         if (res.ok && body.ok) {
           setBlocks([]);
           setSpentUsd(0);
           setLastUsage(null);
           void refreshFiles();
           bumpPreview();
-          setToast({ ok: true, title: `Cleared ${body.cleared}.`, sub: "The builder starts from scratch on your next message." });
-        } else setToast({ ok: false, title: "Couldn't clear", sub: body.error });
+          const b = body.backend;
+          setToast({
+            ok: true,
+            title: `Cleared ${body.cleared}.`,
+            sub: b
+              ? `${b.deleted.length} collection(s) deleted${b.brokeCycles.length ? `, ${b.brokeCycles.length} relation cycle(s) broken` : ""}. The builder starts from scratch on your next message.`
+              : "The builder starts from scratch on your next message.",
+          });
+        } else {
+          // A partial teardown must name what survived — "failed" alone would
+          // leave you guessing which half of the reset actually happened.
+          const left = body.backend?.remaining ?? [];
+          setToast({
+            ok: false,
+            title: "Couldn't clear everything",
+            sub: left.length ? `Still standing: ${left.join(", ")}` : body.error,
+          });
+        }
       } catch (e) {
         setToast({ ok: false, title: "Couldn't clear", sub: e instanceof Error ? e.message : String(e) });
       }
-      setTimeout(() => setToast(null), 5200);
+      setTimeout(() => setToast(null), 6500);
     },
     [app.slug, refreshFiles, bumpPreview],
   );

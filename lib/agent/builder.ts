@@ -75,6 +75,39 @@ const toolLabel = (name: string, input: Record<string, unknown>): string => {
 };
 
 /**
+ * How many times the same tool may fail the same way before the turn is cut
+ * off. The record is ~20 identical E_VALIDATION rejections in one turn: $7.40
+ * spent, one file written, and the model talking itself into believing the
+ * platform was broken. Each failure in context also teaches the next round
+ * that malformed calls are normal here, so a spiral feeds itself.
+ */
+const FAIL_LIMIT = 3;
+
+/**
+ * What makes two failures "the same". Deliberately includes a normalized slice
+ * of the message, not just the E_* code: a build legitimately hits several
+ * different E_VALIDATIONs while self-repairing a schema, and stopping that
+ * would break the loop's best feature.
+ */
+export const failSignature = (tool: string, result: unknown): string => {
+  const raw =
+    typeof result === "string"
+      ? result
+      : JSON.stringify((result as { error?: unknown })?.error ?? result ?? "");
+  const norm = raw
+    .replace(/["'`]/g, "")
+    // uuids and entity ids first, or their surviving letters keep two otherwise
+    // identical failures apart — a loop of E_NOT_FOUNDs on different rows is
+    // still a loop, and it means the agent's view of what exists is stale.
+    .replace(/\b[0-9a-f]{8,}\b/gi, "#")
+    .replace(/\d+/g, "#")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 100);
+  return `${tool}::${norm}`;
+};
+
+/**
  * Local fallback trim, used only where server-side context management is not
  * available (the Haiku fast tier). Crude by nature: it drops whole turns, so
  * the agent forgets what it already did. On tiers that support it we let the
@@ -163,7 +196,18 @@ export async function* runBuilder(
   // repair round — never a loop.
   let touchedApp = false;
   let reviewSpent = false;
-  const TOUCHING_TOOLS = new Set(["write_app_file", "delete_app_file", "define_collection", "define_schedule", "define_block"]);
+  const TOUCHING_TOOLS = new Set([
+    "write_app_file", "edit_app_file", "delete_app_file",
+    "define_collection", "delete_collection", "teardown_backend",
+    "define_schedule", "define_block",
+  ]);
+
+  // Circuit breaker state, and a turn-level record of what actually landed —
+  // so a turn that runs out of rounds can say what it managed rather than
+  // stopping in silence.
+  let failSig: string | null = null;
+  let failCount = 0;
+  const touchedFiles = new Set<string>();
 
   // Every build reports what it spent — nobody discovers a drained balance
   // from a 400 again. Totals accumulate across all rounds of this turn.
@@ -271,7 +315,10 @@ export async function* runBuilder(
         appendTranscript(slug, { kind: "system", text: "stopped: max_tokens (truncated round)" });
         yield {
           type: "error",
-          message: "The builder hit its output limit mid-round, so this turn is incomplete. Send \"continue\" and it will pick up from here.",
+          message:
+            "The builder hit its output limit mid-round, so this turn is INCOMPLETE. " +
+            (touchedFiles.size ? `Files written so far: ${[...touchedFiles].slice(0, 12).join(", ")}. ` : "") +
+            'Send "continue" and it will pick up from here.',
         };
         saveConversation(slug, messages);
         yield { type: "turn_done", stopReason: "max_tokens", usage: seal() };
@@ -337,21 +384,66 @@ export async function* runBuilder(
         const outcome = outcomes[i];
         if (!outcome.isError && TOUCHING_TOOLS.has(c.use.name)) touchedApp = true;
         appendTranscript(slug, { kind: "tool", tool: { name: c.use.name, summary: outcome.summary, ok: !outcome.isError } });
-        if (outcome.filesChanged) changed.push(...outcome.filesChanged);
+        if (outcome.filesChanged) {
+          changed.push(...outcome.filesChanged);
+          for (const f of outcome.filesChanged) touchedFiles.add(f);
+        }
         yield { type: "tool_done", name: c.use.name, label: c.label, ok: !outcome.isError, summary: outcome.summary };
-        results.push({
-          type: "tool_result",
-          tool_use_id: c.use.id,
-          content: typeof outcome.result === "string" ? outcome.result : JSON.stringify(outcome.result),
-          is_error: outcome.isError,
-        });
+
+        let body = typeof outcome.result === "string" ? outcome.result : JSON.stringify(outcome.result);
+        if (outcome.isError) {
+          const sig = failSignature(c.use.name, outcome.result);
+          if (sig === failSig) failCount += 1;
+          else {
+            failSig = sig;
+            failCount = 1;
+          }
+          // From the second identical failure, stop handing the model another
+          // verbatim copy of a call it already got wrong — that repetition is
+          // what normalizes the bad shape and keeps the spiral going.
+          if (failCount >= 2) {
+            body = JSON.stringify({
+              error: `Identical to the previous ${failCount - 1} failure(s) on ${c.use.name}; the full text is above and has not changed. Retrying this shape will not work — change the call, or stop and tell the user what you are blocked on.`,
+            });
+          }
+        } else {
+          failSig = null; // any success means progress
+          failCount = 0;
+        }
+        results.push({ type: "tool_result", tool_use_id: c.use.id, content: body, is_error: outcome.isError });
       }
       if (changed.length) yield { type: "files_changed", files: [...new Set(changed)] };
       messages.push({ role: "user", content: results });
       saveConversation(slug, messages); // persist between rounds — a dropped stream resumes cleanly
+
+      if (failSig && failCount >= FAIL_LIMIT) {
+        const [tool, why] = failSig.split("::");
+        appendTranscript(slug, { kind: "system", text: `halted: ${failCount}× identical failure on ${tool}` });
+        appendTranscript(slug, { kind: "system", text: `usage: ${JSON.stringify(seal())}` });
+        yield {
+          type: "error",
+          message: `Stopped — \`${tool}\` failed ${failCount} times with the same error, so the builder was going in circles rather than making progress. The error was: ${why?.slice(0, 240) ?? "unknown"}. Everything up to this point is saved; tell me what to try differently.`,
+        };
+        yield { type: "turn_done", stopReason: "stuck", usage: seal() };
+        return;
+      }
     }
+    // Running out of rounds used to end the turn with a bare line and no
+    // turn_done — so a build that died two thirds of the way through looked
+    // to the operator exactly like a build that finished. Say what landed.
+    const landed = [...touchedFiles];
+    appendTranscript(slug, { kind: "system", text: `stopped: round cap (${MAX_ROUNDS}) · files touched: ${landed.length}` });
     appendTranscript(slug, { kind: "system", text: `usage: ${JSON.stringify(seal())}` });
-    yield { type: "error", message: `Stopped after ${MAX_ROUNDS} tool rounds — send a follow-up to continue.` };
+    yield {
+      type: "error",
+      message:
+        `Stopped after ${MAX_ROUNDS} tool rounds — this turn is INCOMPLETE, not finished. ` +
+        (landed.length
+          ? `Files written so far: ${landed.slice(0, 12).join(", ")}${landed.length > 12 ? ` (+${landed.length - 12} more)` : ""}. `
+          : "No files were written. ") +
+        `Send "continue" to carry on from here.`,
+    };
+    yield { type: "turn_done", stopReason: "round_cap", usage: seal() };
   } catch (e) {
     // An aborted model call surfaces as an exception; that is a Stop, not a
     // failure, and the work so far is still worth keeping.

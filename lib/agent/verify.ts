@@ -31,8 +31,27 @@ export interface CollectionFacts {
  */
 export interface BuildContext {
   collections: Map<string, Promise<CollectionFacts | undefined>>;
+  /**
+   * collection name → epoch ms of its last schema mutation. Pluggie's delivery
+   * layer converges in ~15s, and for that window a read is ambiguous: "not
+   * converged yet", "doesn't exist" and "stale" all look identical. The agent
+   * used to resolve that ambiguity by rewriting app code that was never broken
+   * (it was caught inventing its own waits — 500ms, then 2s). Reads now wait
+   * the window out instead of guessing.
+   */
+  converging: Map<string, number>;
 }
-export const createBuildContext = (): BuildContext => ({ collections: new Map() });
+export const createBuildContext = (): BuildContext => ({ collections: new Map(), converging: new Map() });
+
+/** How long a schema change stays ambiguous. Pluggie states ~15s; round up. */
+export const CONVERGENCE_MS = 20_000;
+
+/** Milliseconds still to wait before a read of `name` means anything. */
+export function convergenceWait(name: string, ctx: BuildContext, now = Date.now()): number {
+  const at = ctx.converging.get(name);
+  if (at === undefined) return 0;
+  return Math.max(0, CONVERGENCE_MS - (now - at));
+}
 
 export interface VerifyReport {
   /** syntax problems — the write is refused */
