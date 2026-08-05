@@ -454,6 +454,31 @@ async function landAppFile(
   };
 }
 
+/**
+ * Read `paths` in any of the shapes the model actually sends: a real array, a
+ * JSON-encoded array, a single path, or a comma/whitespace-separated list.
+ */
+function coercePaths(raw: unknown): string[] {
+  const clean = (v: unknown): string[] => {
+    const s = String(v ?? "").trim();
+    if (!s) return [];
+    if (s.startsWith("[")) {
+      try {
+        const parsed: unknown = JSON.parse(s);
+        if (Array.isArray(parsed)) return parsed.flatMap(clean);
+      } catch {
+        /* not JSON after all — fall through to splitting */
+      }
+    }
+    return s
+      .split(/[,\s]+/)
+      .map((p) => p.replace(/^["'`]|["'`]$/g, "").trim())
+      .filter(Boolean);
+  };
+  if (Array.isArray(raw)) return raw.flatMap(clean);
+  return clean(raw);
+}
+
 /** Row-level writes — they take the same ~15s to show up on the delivery API. */
 const ROW_WRITES = new Set([
   "create_entry", "bulk_create_entries", "update_entry", "update_entry_if", "delete_entry",
@@ -547,20 +572,13 @@ export async function dispatchTool(
           summary: "probe_app: no delivery token yet",
         };
       }
-      // A terse "no paths given" left the model unable to tell WHAT it got
-      // wrong — it repeated the same malformed call and then asked the human to
-      // read a browser console, which is the behaviour probe_app exists to
-      // replace. Name the mistake precisely enough to fix in one retry.
-      if (typeof input.paths === "string") {
-        return {
-          result: {
-            error: `paths must be a JSON ARRAY of strings, but arrived as a single string (${preview(input.paths, 60)}). Re-send as ["${String(input.paths).split(/[,\s]+/)[0] || "/api/v1/your_collection"}"] — a real array, not a quoted blob or a comma-separated list.`,
-          },
-          isError: true,
-          summary: "probe_app: paths arrived as a string, not an array",
-        };
-      }
-      const paths = Array.isArray(input.paths) ? input.paths.map(String).filter(Boolean).slice(0, 6) : [];
+      // COERCE, do not refuse. The fast tier reliably emits `paths` as a
+      // string, and rejecting it — however precisely worded — just produced the
+      // same malformed call again and then a request for the user to read a
+      // browser console. Strictness earns its keep on define_collection, where
+      // the shape is complex and a wrong guess is destructive; a list of URL
+      // paths has exactly one sensible reading, so take it.
+      const paths = coercePaths(input.paths).slice(0, 6);
       if (!paths.length) {
         const known = wsList(slug)
           .filter((f) => /\.(html|js|mjs)$/i.test(f.path))
