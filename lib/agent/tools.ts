@@ -20,6 +20,7 @@ import {
   convergenceWait,
   createBuildContext,
   deadScheduleWarning,
+  extractCollectionRefs,
   verifyAppFile,
   type BuildContext,
 } from "@/lib/agent/verify";
@@ -546,9 +547,41 @@ export async function dispatchTool(
           summary: "probe_app: no delivery token yet",
         };
       }
-      const paths = Array.isArray(input.paths) ? input.paths.map(String).slice(0, 6) : [];
+      // A terse "no paths given" left the model unable to tell WHAT it got
+      // wrong — it repeated the same malformed call and then asked the human to
+      // read a browser console, which is the behaviour probe_app exists to
+      // replace. Name the mistake precisely enough to fix in one retry.
+      if (typeof input.paths === "string") {
+        return {
+          result: {
+            error: `paths must be a JSON ARRAY of strings, but arrived as a single string (${preview(input.paths, 60)}). Re-send as ["${String(input.paths).split(/[,\s]+/)[0] || "/api/v1/your_collection"}"] — a real array, not a quoted blob or a comma-separated list.`,
+          },
+          isError: true,
+          summary: "probe_app: paths arrived as a string, not an array",
+        };
+      }
+      const paths = Array.isArray(input.paths) ? input.paths.map(String).filter(Boolean).slice(0, 6) : [];
       if (!paths.length) {
-        return { result: { error: 'Pass paths: ["/api/v1/…"]' }, isError: true, summary: "probe_app: no paths given" };
+        const known = wsList(slug)
+          .filter((f) => /\.(html|js|mjs)$/i.test(f.path))
+          .flatMap((f) => {
+            try {
+              return [...extractCollectionRefs(wsRead(slug, f.path)).certain];
+            } catch {
+              return [];
+            }
+          });
+        const suggest = [...new Set(known)].slice(0, 4).map((c) => `/api/v1/${c}`);
+        return {
+          result: {
+            error: "probe_app needs the paths to test — it cannot guess them.",
+            example: suggest.length
+              ? { paths: suggest, note: "These are the collections this app's own code fetches — probe these." }
+              : { paths: ["/api/v1/your_collection"] },
+          },
+          isError: true,
+          summary: "probe_app: no paths given",
+        };
       }
       // A probe fired inside Pluggie's ~15s delivery convergence window reports
       // a perfectly healthy schema as broken — and the agent then "fixes" code
@@ -735,10 +768,24 @@ export async function dispatchTool(
     if (name === "mint_delivery_token") {
       const existing = getDeliveryToken(slug);
       if (existing && (await deliveryTokenAlive(existing))) {
+        // Re-sync to the edge even though we are not minting. Custody lives in
+        // two places — XVibe's store and the worker's KV — and only the MINT
+        // path used to write the second one. An app whose KV copy was missing
+        // (first deploy, a failed sync, or an app older than the worker) could
+        // therefore never be repaired by minting again: this branch returned
+        // first. Symptom is nasty because it is half-working — MCP reads fine,
+        // the studio preview proxies fine, and only the PUBLISHED app 401s.
+        const kv = await syncDeliveryToken(slug, existing);
         return {
-          result: { ok: true, note: "This app already has a delivery token at the serving edge — reusing it. Rotation happens via revoke + re-mint in the console." },
+          result: {
+            ok: true,
+            note: "This app already has a live delivery token — reusing it. Rotation happens via revoke + re-mint in the console.",
+            ...(kv.ok
+              ? { edge: "Edge copy confirmed — the published app can authorize its own reads." }
+              : { edgeSync: `The edge copy could NOT be written (${kv.error}). The studio preview will still work while the PUBLISHED app 401s — say so rather than debugging the frontend.` }),
+          },
           isError: false,
-          summary: "delivery token already in custody — reused",
+          summary: kv.ok ? "delivery token already in custody — reused, edge re-synced" : "delivery token reused — EDGE SYNC FAILED",
         };
       }
       // No token, or the stored one is dead (revoked/rotated upstream) —
