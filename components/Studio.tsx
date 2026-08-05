@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppMeta, DeployVersionInfo, TranscriptEvent, WsFile } from "@/lib/apps/store";
 import type { AgentEvent, TurnUsage } from "@/lib/agent/events";
+import type { Plan, PlanTask, TaskReceipt } from "@/lib/agent/backlog";
 import { estimateCostUsd, formatUsd } from "@/lib/agent/pricing";
 import { DEFAULT_EFFORT, EFFORTS, EFFORT_BLURB, isEffort, type Effort } from "@/lib/agent/models";
 
@@ -17,7 +18,11 @@ type Item =
   | { kind: "text"; text: string }
   | { kind: "step"; name: string; label: string; state: "wait" | "ok" | "fail"; summary?: string }
   /** end-of-turn receipt: what this build actually cost */
-  | { kind: "checkpoint"; usage: TurnUsage };
+  | { kind: "checkpoint"; usage: TurnUsage }
+  /** a proposed plan, awaiting the user's approval — nothing built yet */
+  | { kind: "plan"; planId: string }
+  /** one task of a running plan, with its receipt once it finishes */
+  | { kind: "task"; id: string; title: string; index: number; total: number; state: "wait" | "ok" | "fail"; receipt?: TaskReceipt };
 interface Block {
   role: "user" | "agent";
   items: Item[];
@@ -88,6 +93,8 @@ export function Studio(props: {
   const [blocks, setBlocks] = useState<Block[]>(() => fromTranscript(props.initialTranscript));
   const [busy, setBusy] = useState(false);
   const [input, setInput] = useState("");
+  /** A proposed, not-yet-approved plan. Survives a refresh — it lives on disk. */
+  const [plan, setPlan] = useState<Plan | null>(null);
   const [lastUsage, setLastUsage] = useState<TurnUsage | null>(null);
   /** Running total for this session — the number that answers "what am I spending?" */
   const [spentUsd, setSpentUsd] = useState(0);
@@ -326,14 +333,18 @@ export function Studio(props: {
     [app.slug, themeBusy, refreshFiles, bumpPreview],
   );
 
-  /* ── chat send (SSE) ── */
-  const send = useCallback(
-    async (raw: string) => {
-      const message = raw.trim();
-      if (!message || busy) return;
-      setInput("");
+  /* ── chat send (SSE) ──
+     One streaming path for both kinds of turn: a message the user typed, and
+     "run the plan you already approved", which has no message at all. */
+  const runStream = useCallback(
+    async (body: Record<string, unknown>, echo?: string) => {
+      if (busy) return;
       setBusy(true);
-      setBlocks((b) => [...b, { role: "user", items: [{ kind: "text", text: message }] }, { role: "agent", items: [] }]);
+      setBlocks((b) => [
+        ...b,
+        ...(echo ? [{ role: "user" as const, items: [{ kind: "text" as const, text: echo }] }] : []),
+        { role: "agent", items: [] },
+      ]);
 
       const apply = (ev: AgentEvent) =>
         setBlocks((prev) => {
@@ -371,6 +382,20 @@ export function Studio(props: {
                 break;
               }
             }
+          } else if (ev.type === "plan") {
+            dropReasoning();
+            cur.items.push({ kind: "plan", planId: ev.plan.id });
+          } else if (ev.type === "task_start") {
+            dropReasoning();
+            cur.items.push({ kind: "task", id: ev.id, title: ev.title, index: ev.index, total: ev.total, state: "wait" });
+          } else if (ev.type === "task_done") {
+            for (let i = cur.items.length - 1; i >= 0; i--) {
+              const it = cur.items[i];
+              if (it.kind === "task" && it.id === ev.id) {
+                cur.items[i] = { ...it, state: ev.ok ? "ok" : "fail", receipt: ev.receipt };
+                break;
+              }
+            }
           } else if (ev.type === "turn_done" && ev.usage) {
             dropReasoning();
             cur.items.push({ kind: "checkpoint", usage: ev.usage });
@@ -386,7 +411,7 @@ export function Studio(props: {
         const res = await fetch(`/api/apps/${app.slug}/chat`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ message, model: modelPin, effort }),
+          body: JSON.stringify({ ...body, model: modelPin, effort }),
           signal: ac.signal,
         });
         if (!res.ok || !res.body) {
@@ -415,6 +440,7 @@ export function Studio(props: {
               continue;
             }
             apply(ev);
+            if (ev.type === "plan") setPlan(ev.plan);
             if (ev.type === "files_changed") {
               void refreshFiles();
               bumpPreview();
@@ -439,6 +465,51 @@ export function Studio(props: {
     },
     [app.slug, busy, modelPin, effort, refreshFiles, bumpPreview],
   );
+
+  const send = useCallback(
+    async (raw: string) => {
+      const message = raw.trim();
+      if (!message || busy) return;
+      setInput("");
+      await runStream({ message }, message);
+    },
+    [busy, runStream],
+  );
+
+  /* ── plan review ──
+     The cheapest moment to change the outcome: editing a ten-line task list
+     costs seconds, editing a finished app costs a day. Approve records
+     consent; the run is a second call so a plan can be re-run after a stop. */
+  const approvePlan = useCallback(async () => {
+    if (!plan) return;
+    const res = await fetch(`/api/apps/${app.slug}/plan`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "approve", tasks: plan.tasks }),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { error?: string };
+      setToast({ ok: false, title: "Couldn't start the plan", sub: err.error });
+      setTimeout(() => setToast(null), 5000);
+      return;
+    }
+    setPlan(null);
+    await runStream({ runPlan: true });
+  }, [app.slug, plan, runStream]);
+
+  const discardPlan = useCallback(async () => {
+    await fetch(`/api/apps/${app.slug}/plan`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "discard" }),
+    });
+    setPlan(null);
+  }, [app.slug]);
+
+  /** Edit in place — drop, retitle, or move a task before any of it runs. */
+  const editPlan = useCallback((mutate: (tasks: PlanTask[]) => PlanTask[]) => {
+    setPlan((p) => (p ? { ...p, tasks: mutate(p.tasks.slice()) } : p));
+  }, []);
 
   /* ── code viewer ── */
   const openFile = useCallback(
@@ -524,6 +595,21 @@ export function Studio(props: {
     div.addEventListener("pointerdown", down);
     return () => div.removeEventListener("pointerdown", down);
   }, []);
+
+  // A plan proposed just before a refresh is still waiting to be approved —
+  // reload it rather than stranding the user with work they cannot start.
+  useEffect(() => {
+    let live = true;
+    void fetch(`/api/apps/${app.slug}/plan`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s: { current?: Plan | null } | null) => {
+        if (live && s?.current && !s.current.approvedAt) setPlan(s.current);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [app.slug]);
 
   /* ── palette ── */
   const commands = useMemo(
@@ -742,6 +828,15 @@ export function Studio(props: {
                         <span>{item.usage.rounds} {item.usage.rounds === 1 ? "step" : "steps"}</span>
                         {item.usage.seconds !== undefined && <span>{item.usage.seconds}s</span>}
                       </span>
+                    ) : item.kind === "plan" ? (
+                      <span key={j} className="step">
+                        <code>plan</code>
+                        <span className="sum">
+                          {plan && plan.id === item.planId ? " — waiting for your approval below" : " — reviewed"}
+                        </span>
+                      </span>
+                    ) : item.kind === "task" ? (
+                      <TaskRow key={j} item={item} />
                     ) : (
                       <span key={j} className={`step ${item.state === "wait" ? "wait" : item.state === "fail" ? "fail" : ""}`}>
                         <code>{item.label}</code>
@@ -754,6 +849,18 @@ export function Studio(props: {
             ))}
           </div>
           <div className="composer">
+            {/* Anchored here rather than inline in the chat: a plan proposed
+                just before a refresh must still be approvable, and the chat
+                block that announced it does not survive a reload. */}
+            {plan && (
+              <PlanCard
+                plan={plan}
+                busy={busy}
+                onApprove={() => void approvePlan()}
+                onDiscard={() => void discardPlan()}
+                onEdit={editPlan}
+              />
+            )}
             <div className="suggest">
               {chips.map((c) => (
                 <button key={c} className="schip" disabled={busy} onClick={() => void send(c)}>
@@ -1344,6 +1451,135 @@ export function Studio(props: {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ── plan review ── */
+
+/**
+ * The plan, before any of it runs. Editable in place on purpose: arguing a
+ * task list into shape through chat costs a round-trip each time, whereas
+ * retitling or dropping one here is free and instant.
+ */
+function PlanCard({
+  plan,
+  busy,
+  onApprove,
+  onDiscard,
+  onEdit,
+}: {
+  plan: Plan;
+  busy: boolean;
+  onApprove: () => void;
+  onDiscard: () => void;
+  onEdit: (mutate: (tasks: PlanTask[]) => PlanTask[]) => void;
+}) {
+  const move = (from: number, to: number) =>
+    onEdit((ts) => {
+      if (to < 0 || to >= ts.length) return ts;
+      const [t] = ts.splice(from, 1);
+      ts.splice(to, 0, t);
+      return ts;
+    });
+  return (
+    <div className="plan">
+      <div className="plan-hd">
+        <b>
+          {plan.tasks.length} task{plan.tasks.length === 1 ? "" : "s"}
+        </b>
+        <span>nothing is built yet — review, then approve</span>
+      </div>
+      <ol className="plan-tasks">
+        {plan.tasks.map((t, i) => (
+          <li key={t.id}>
+            <span className="pn">{i + 1}</span>
+            <div className="pbody">
+              <input
+                value={t.title}
+                aria-label={`Task ${i + 1} title`}
+                disabled={busy}
+                onChange={(e) =>
+                  onEdit((ts) => {
+                    ts[i] = { ...ts[i], title: e.target.value };
+                    return ts;
+                  })
+                }
+              />
+              <span className="pdw">{t.doneWhen}</span>
+            </div>
+            <div className="pacts">
+              <button disabled={busy || i === 0} title="Move up" aria-label={`Move task ${i + 1} up`} onClick={() => move(i, i - 1)}>
+                ↑
+              </button>
+              <button
+                disabled={busy || i === plan.tasks.length - 1}
+                title="Move down"
+                aria-label={`Move task ${i + 1} down`}
+                onClick={() => move(i, i + 1)}
+              >
+                ↓
+              </button>
+              <button
+                disabled={busy || plan.tasks.length === 1}
+                title="Remove this task"
+                aria-label={`Remove task ${i + 1}`}
+                onClick={() => onEdit((ts) => ts.filter((_, n) => n !== i))}
+              >
+                ✕
+              </button>
+            </div>
+          </li>
+        ))}
+      </ol>
+      <div className="plan-foot">
+        <button className="btn primary sm" onClick={onApprove} disabled={busy || !plan.tasks.length}>
+          Approve &amp; build
+        </button>
+        <button className="btn sm" onClick={onDiscard} disabled={busy}>
+          Discard
+        </button>
+        <span className="phint">Tasks run one at a time, and each is checked against the live API before the next starts.</span>
+      </div>
+    </div>
+  );
+}
+
+/** One executed task and what it actually did — the receipt, not a summary. */
+function TaskRow({
+  item,
+}: {
+  item: { id: string; title: string; index: number; total: number; state: "wait" | "ok" | "fail"; receipt?: TaskReceipt };
+}) {
+  const r = item.receipt;
+  return (
+    <div className={`task ${item.state}`}>
+      <div className="task-hd">
+        <span className="tn">
+          {item.index}/{item.total}
+        </span>
+        <b>{item.title}</b>
+        {r ? <span className="tcost">{formatUsd(r.costUsd)}</span> : null}
+      </div>
+      {r ? (
+        <div className="task-rc">
+          <span className="tnote">{r.note}</span>
+          <div className="tmeta">
+            {r.changed.length ? (
+              <span>
+                {r.changed.length} file{r.changed.length === 1 ? "" : "s"}
+              </span>
+            ) : null}
+            {r.probed.length ? <span className="good">verified {r.probed.length}</span> : null}
+            {/* The honesty field: an endpoint the app calls that nobody checked. */}
+            {r.unprobed.length ? <span className="warn">NOT verified: {r.unprobed.join(", ")}</span> : null}
+            <span>
+              {r.rounds} {r.rounds === 1 ? "step" : "steps"} · {r.seconds}s
+            </span>
+            {r.error ? <span className="bad">{r.error}</span> : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

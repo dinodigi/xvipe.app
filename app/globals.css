@@ -129,6 +129,45 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .ckpt b { font-size: 12px; color: var(--ink); font-weight: 600; }
 .ckpt span::before { content: "·"; margin-right: 10px; opacity: .5; }
 
+/* Plan review. The one moment a user can change the outcome cheaply, so it
+   gets real weight in the chat rather than reading as another status line. */
+.plan { margin: 10px 0; border: 1px solid var(--line); border-radius: 11px; background: #ffffff06; overflow: hidden; }
+.plan-hd { display: flex; align-items: baseline; gap: 9px; padding: 9px 12px; border-bottom: 1px solid var(--hair); }
+.plan-hd b { font-size: 12.5px; color: var(--ink); font-weight: 620; }
+.plan-hd span { font-size: 11px; color: var(--faint); }
+.plan-tasks { list-style: none; margin: 0; padding: 4px 0; display: flex; flex-direction: column; }
+.plan-tasks li { display: flex; align-items: flex-start; gap: 9px; padding: 6px 12px; }
+.plan-tasks li + li { border-top: 1px solid var(--hair); }
+.plan .pn { flex: none; width: 17px; text-align: right; font: 10.5px var(--mono); color: var(--faint); padding-top: 6px; }
+.plan .pbody { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.plan .pbody input { width: 100%; background: none; border: 1px solid transparent; border-radius: 6px; padding: 2px 5px; margin-left: -5px; color: var(--ink); font: 12.5px/1.4 var(--sans); }
+.plan .pbody input:hover:not(:disabled) { border-color: var(--line); }
+.plan .pbody input:focus-visible { outline: none; border-color: var(--coral); background: #00000030; }
+.plan .pdw { font-size: 11px; color: var(--faint); line-height: 1.4; }
+.plan .pacts { flex: none; display: flex; gap: 2px; opacity: 0; transition: opacity .14s; }
+.plan-tasks li:hover .pacts, .plan .pacts:focus-within { opacity: 1; }
+.plan .pacts button { width: 21px; height: 21px; border-radius: 6px; border: 1px solid var(--line); background: #00000030; color: var(--mute); font-size: 11px; line-height: 1; transition: .14s; }
+.plan .pacts button:hover:not(:disabled) { border-color: var(--coral); color: var(--ink); }
+.plan .pacts button:disabled { opacity: .3; cursor: not-allowed; }
+.plan-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 9px 12px; border-top: 1px solid var(--hair); background: #00000020; }
+.plan .phint { font-size: 10.5px; color: var(--faint); flex: 1; min-width: 150px; }
+
+/* One executed task: what it did, whether it was verified, what it cost. */
+.task { margin: 7px 0; padding-left: 15px; position: relative; }
+.task::before { content: ""; position: absolute; left: 0; top: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--live); box-shadow: 0 0 6px var(--live); }
+.task.wait::before { background: var(--build); box-shadow: 0 0 6px var(--build); animation: pulse 1s infinite; }
+.task.fail::before { background: var(--bad); box-shadow: 0 0 6px var(--bad); }
+.task-hd { display: flex; align-items: baseline; gap: 8px; }
+.task-hd b { font-size: 12.5px; font-weight: 560; color: var(--ink); }
+.task .tn { font: 10px var(--mono); color: var(--faint); flex: none; }
+.task .tcost { margin-left: auto; font: 10.5px var(--mono); color: var(--faint); flex: none; }
+.task-rc { margin-top: 2px; display: flex; flex-direction: column; gap: 2px; }
+.task .tnote { font-size: 12px; color: var(--mute); }
+.task .tmeta { display: flex; flex-wrap: wrap; gap: 4px 10px; font: 10.5px var(--mono); color: var(--faint); }
+.task .tmeta .good { color: var(--live); }
+.task .tmeta .warn { color: var(--build); }
+.task .tmeta .bad { color: var(--bad); }
+
 /* Theme picker — swatch-first, so the choice reads as a look not a label. */
 .themegrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
 .themecard { display: flex; flex-direction: column; gap: 8px; text-align: left; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: #ffffff05; cursor: pointer; transition: border-color .14s, background .14s; }

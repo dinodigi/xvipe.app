@@ -12,6 +12,7 @@
     "spine": "node scripts/prove-spine.mjs",
     "verify-connection": "tsx scripts/verify-connection.mts",
     "evals": "tsx evals/run.mts",
+    "evals:reviewer": "tsx evals/reviewer.mts",
     "vendor": "node scripts/build-vendor.mjs",
     "evals:reset": "tsx evals/reset.mts",
     "verify": "npm run typecheck && npm run boundary && npm run spine"

@@ -111,6 +111,93 @@ function* inlineScripts(html: string): Generator<string> {
 }
 export const API_REF = /\/api\/v1\/([A-Za-z0-9_-]+)/g;
 
+/** The collection a delivery path reads, e.g. "/api/v1/tasks?x=1" → "tasks". */
+export const collectionOf = (p: string): string => p.replace(/^\/api\/v1\//, "").split(/[?/#]/)[0] ?? "";
+
+/* ── constraint drift ─────────────────────────────────────────────────────── */
+
+const hasKeys = (v: unknown): boolean => Boolean(v && typeof v === "object" && Object.keys(v as object).length);
+const hasTransitions = (wf: unknown): boolean =>
+  Boolean(wf && typeof wf === "object" && Array.isArray((wf as { transitions?: unknown[] }).transitions) && (wf as { transitions: unknown[] }).transitions.length);
+
+/** Schedules whose action is a workflow transition on `collection`. */
+async function transitionSchedules(collection: string, mcpToken: string): Promise<string[]> {
+  try {
+    const raw = await callTool<unknown>("list_schedules", {}, mcpToken);
+    const all = Array.isArray(raw) ? raw : ((raw as Record<string, unknown>)?.schedules as unknown[]) ?? [];
+    return all
+      .filter((s) => {
+        const json = JSON.stringify(s);
+        return json.includes(`"${collection}"`) && /"transition"\s*:/.test(json);
+      })
+      .map((s) => String((s as { name?: string; id?: string }).name ?? (s as { id?: string }).id ?? "unnamed"));
+  } catch {
+    return [];
+  }
+}
+
+export interface DriftReport {
+  /** load-bearing things the new shape would remove */
+  lost: string[];
+  /** declared automation that would stop working if they went */
+  dependents: string[];
+}
+
+/**
+ * define_collection is full-replace, so an omitted `workflow` or `access` is a
+ * silent deletion. That is how a nightly archive schedule died unnoticed for
+ * days: the builder removed a workflow to make a transition error go away, and
+ * the schedule's transition action then had nothing to act on — a loud failure
+ * converted into a silent one, which is the worst trade available.
+ *
+ * Returns undefined when the collection is new (nothing to lose).
+ */
+export async function collectionDrift(
+  name: string,
+  next: Record<string, unknown>,
+  mcpToken: string,
+): Promise<DriftReport | undefined> {
+  let prev: Record<string, unknown>;
+  try {
+    const raw = await callTool<Record<string, unknown>>("describe_collection", { name }, mcpToken);
+    prev = ((raw.collection as Record<string, unknown>) ?? raw) as Record<string, unknown>;
+  } catch {
+    return undefined; // new collection
+  }
+  const lost: string[] = [];
+  const dependents: string[] = [];
+
+  if (hasTransitions(prev.workflow) && !hasTransitions(next.workflow)) {
+    const states = (prev.workflow as { transitions?: { from?: string; to?: string }[] }).transitions ?? [];
+    lost.push(`the workflow (${states.length} transition${states.length === 1 ? "" : "s"})`);
+    for (const s of await transitionSchedules(name, mcpToken)) {
+      dependents.push(`schedule "${s}" performs a workflow transition on ${name} and would silently stop matching`);
+    }
+  }
+  if (hasKeys(prev.access) && !hasKeys(next.access)) {
+    lost.push(`the access rules (${JSON.stringify(prev.access)})`);
+  }
+  return lost.length ? { lost, dependents } : undefined;
+}
+
+/**
+ * A schedule whose action is a transition, on a collection that has no
+ * workflow, is dead code that fails silently every night. Checked after a
+ * schema change rather than before, because that is when it becomes true.
+ */
+export async function deadScheduleWarning(name: string, mcpToken: string): Promise<string | undefined> {
+  const schedules = await transitionSchedules(name, mcpToken);
+  if (!schedules.length) return undefined;
+  try {
+    const raw = await callTool<Record<string, unknown>>("describe_collection", { name }, mcpToken);
+    const c = ((raw.collection as Record<string, unknown>) ?? raw) as Record<string, unknown>;
+    if (hasTransitions(c.workflow)) return undefined;
+    return `DEAD SCHEDULE: ${schedules.map((s) => `"${s}"`).join(", ")} perform${schedules.length === 1 ? "s" : ""} a workflow transition on ${name}, which now has no workflow. ${schedules.length === 1 ? "It" : "They"} will run every night and match nothing. Restore the workflow or delete the schedule — do not leave it silently failing.`;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Server-code drift patterns (task #9 — a real Haiku build once wrote a Node
  * backend). None of these have any meaning in a browser file; each one means

@@ -283,6 +283,24 @@ export function readTranscript(slug: string): TranscriptEvent[] {
     .filter((e): e is TranscriptEvent => Boolean(e));
 }
 
+/* ── plan + backlog (the serial task queue a build runs against) ──────────── */
+
+import { emptyPlanState, type PlanState } from "@/lib/agent/backlog";
+
+export function loadPlanState(slug: string): PlanState {
+  const file = join(appDir(slug), "plan.json");
+  if (!existsSync(file)) return emptyPlanState();
+  try {
+    return JSON.parse(readFileSync(file, "utf8")) as PlanState;
+  } catch {
+    return emptyPlanState();
+  }
+}
+
+export function savePlanState(slug: string, state: PlanState): void {
+  writeFileSync(join(appDir(slug), "plan.json"), JSON.stringify(state, null, 2));
+}
+
 /* ── conversation state (model turns, for resume across messages) ─────────── */
 
 export function saveConversation(slug: string, turns: unknown[]): void {
@@ -299,6 +317,10 @@ export function clearAppHistory(slug: string, opts: { files?: boolean } = {}): v
   const dir = appDir(slug);
   rmSync(join(dir, "conversation.json"), { force: true });
   rmSync(join(dir, "transcript.jsonl"), { force: true });
+  // The plan is memory of what this app was meant to be, so it goes with the
+  // rest of it — a surviving queue would resume against a project that no
+  // longer matches it, which is the exact bug this function exists to prevent.
+  rmSync(join(dir, "plan.json"), { force: true });
   if (opts.files) {
     const ws = wsDir(slug);
     rmSync(ws, { recursive: true, force: true });

@@ -24,8 +24,14 @@ export interface ReviewResult {
 
 /** text files the reviewer reads (binaries carry no reviewable intent) */
 const REVIEWABLE = new Set(["html", "css", "js", "mjs", "json", "svg", "txt", "md", "webmanifest"]);
-const MAX_FILE_CHARS = 12_000;
-const MAX_TOTAL_CHARS = 90_000;
+/**
+ * Per-file budget. Was 12k, which was under half of a real app.js (32,461 B on
+ * the build that produced the worst review round we have) — so the reviewer was
+ * handed a file cut off mid-function and, quite reasonably, reported it as
+ * truncated. Twice. The defect was in the dossier, not the app.
+ */
+const MAX_FILE_CHARS = 48_000;
+const MAX_TOTAL_CHARS = 140_000;
 const MAX_FINDINGS = 6;
 
 /**
@@ -52,7 +58,13 @@ The contract you enforce:
 
 Judge only what you can see in the dossier. If a schedule/workflow the copy promises is absent from the live schema section, that IS visible — flag it.
 
-Do not speculate. If a collection's schema is missing from the dossier you cannot judge its fields — raise that as ONE finding, not one per field. Do not invent requirements the user never asked for: "required" plus a sensible field type is enough validation; pattern/format rules, matching the client regex to the server's, extra indexes and defensive normalisation are not violations. A finding you cannot point at evidence for is worse than no finding — it costs a repair round and teaches the builder to distrust you.
+NEVER file any of these four. Each has been filed before, each was wrong, and together they account for most of the noise this reviewer has ever produced:
+(a) "file/function is truncated", "the fetch call is cut off", "this code is incomplete". Long files are CLIPPED WHEN ASSEMBLING THIS DOSSIER and say so in their header. That is an artefact of how you are reading it, never a defect in the app — the builder's writes are parse-checked, so a file that did not parse was never written.
+(b) "collection X does not exist" / "field Y is missing", when X or Y simply is not in the schema section below. Only the collections this app references are included, capped, and a name inferred from a string-built URL may not be a collection at all. Absence from the dossier is absence of evidence, not evidence of absence.
+(c) generic web-security boilerplate: CSRF tokens, client-side input sanitisation, rate limiting, security headers, "validate on the client too". None of these exist in this platform's model — writes are gated server-side by access rules, and there is no session cookie to forge.
+(d) any finding about a collection or file you cannot see the actual contents of.
+
+Do not speculate. Do not invent requirements the user never asked for: "required" plus a sensible field type is enough validation; pattern/format rules, matching the client regex to the server's, extra indexes and defensive normalisation are not violations. A finding you cannot quote evidence for is worse than no finding — it costs a repair round and teaches the builder to distrust you.
 
 Before you file: every entry in "findings" must be a defect you would block a release for, stated as the defect. If your own reasoning ends in "this is fine", "no violation", "acceptable", or "could be clearer", it is NOT a finding — drop it. Suggestions, polish, and observations do not belong in the list. Zero findings with verdict "pass" is the expected result for a competent build, not a failure on your part.`;
 
@@ -65,13 +77,49 @@ const REPORT_TOOL = {
       verdict: { type: "string", enum: ["pass", "issues"] },
       findings: {
         type: "array",
-        items: { type: "string" },
-        description: `actionable findings, ≤2 sentences each, max ${MAX_FINDINGS}; empty when verdict is "pass"`,
+        description: `actionable findings, max ${MAX_FINDINGS}; empty when verdict is "pass"`,
+        items: {
+          type: "object",
+          properties: {
+            defect: { type: "string", description: "the defect, stated as a defect, in ≤2 sentences" },
+            where: { type: "string", description: "the file path or collection name it is in" },
+            evidence: {
+              type: "string",
+              description:
+                "VERBATIM text from the dossier that proves it — a line of code, or a schema line like '- email (text) [NOT publicRead]'. Not a restatement of the defect, not a paraphrase. If you cannot copy a line out of the dossier that shows this, the finding is speculation: drop it.",
+            },
+          },
+          required: ["defect", "where", "evidence"],
+        },
       },
     },
     required: ["verdict", "findings"],
   },
 };
+
+/**
+ * Evidence has to be a QUOTE, and the cheapest way to tell a quote from a
+ * paraphrase is to check it actually occurs in the dossier. This is the whole
+ * point of the structural change: prompting the reviewer not to speculate has
+ * been tried, and a finding that cites text nobody wrote is exactly what the
+ * false positives looked like.
+ */
+function evidenceHolds(evidence: string, dossier: string): boolean {
+  const e = evidence.trim();
+  if (e.length < 12) return false;
+  const norm = (s: string) => s.replace(/\s+/g, " ").toLowerCase();
+  const hay = norm(dossier);
+  if (hay.includes(norm(e))) return true;
+  // Quotes get lightly mangled (an ellipsis, a trimmed bracket), so accept a
+  // long-enough contiguous run instead of demanding an exact match.
+  const needle = norm(e);
+  for (let len = Math.min(needle.length, 90); len >= 24; len -= 8) {
+    for (let i = 0; i + len <= needle.length; i += 8) {
+      if (hay.includes(needle.slice(i, i + len))) return true;
+    }
+  }
+  return false;
+}
 
 /**
  * A complete, compact rendering of one collection. Raw describe_collection
@@ -126,6 +174,7 @@ async function buildDossier(slug: string, appName: string, mcpToken: string, inf
   let budget = MAX_TOTAL_CHARS;
   const referenced = new Set<string>();
 
+  const certain = new Set<string>();
   const files = wsList(slug).filter((f) => REVIEWABLE.has(f.path.split(".").pop()?.toLowerCase() ?? ""));
   parts.push(`\n## Files (${files.length})`);
   // Read everything and collect collection references FIRST: the clipping
@@ -137,6 +186,7 @@ async function buildDossier(slug: string, appName: string, mcpToken: string, inf
       const content = wsRead(slug, f.path);
       contents.set(f.path, content);
       const refs = extractCollectionRefs(content);
+      for (const name of refs.certain) certain.add(name);
       for (const name of [...refs.certain, ...refs.candidates]) referenced.add(name);
     } catch {
       /* unreadable file — nothing to review */
@@ -157,7 +207,12 @@ async function buildDossier(slug: string, appName: string, mcpToken: string, inf
 
   parts.push(`\n## Live schema for referenced collections`);
   if (referenced.size === 0) parts.push(`(the app references no /api/v1 collections)`);
-  for (const name of [...referenced].slice(0, 8)) {
+  // Literal /api/v1/<name> hits go first: a guessed name crowding out a real
+  // one is how a schema goes missing, and a missing schema is how the reviewer
+  // ends up asserting a collection does not exist.
+  const ordered = [...certain, ...[...referenced].filter((n) => !certain.has(n))];
+  if (ordered.length > 10) parts.push(`(showing 10 of ${ordered.length} referenced names)`);
+  for (const name of ordered.slice(0, 10)) {
     try {
       const desc = await callTool<Record<string, unknown>>("describe_collection", { name }, mcpToken);
       parts.push(summarizeCollection(name, desc));
@@ -195,7 +250,15 @@ export async function reviewBuild(
   mcpToken: string,
   info: ProjectInfo,
 ): Promise<ReviewResult> {
-  const dossier = await buildDossier(slug, appName, mcpToken, info);
+  return judgeDossier(anthropic, await buildDossier(slug, appName, mcpToken, info));
+}
+
+/**
+ * The judging half, separated from dossier assembly so precision can be
+ * measured against fixed cases (evals/reviewer.mts) instead of only against
+ * whole live builds. Same prompt, same tool, same filters as production.
+ */
+export async function judgeDossier(anthropic: Anthropic, dossier: string): Promise<ReviewResult> {
   const res = await anthropic.messages.create({
     model: MODELS.haiku,
     max_tokens: 1200,
@@ -206,10 +269,25 @@ export async function reviewBuild(
   });
   const use = res.content.find((b) => b.type === "tool_use");
   const input = (use?.input ?? {}) as { verdict?: string; findings?: unknown[] };
+  const dropped: string[] = [];
   const findings = (Array.isArray(input.findings) ? input.findings : [])
-    .map((f) => String(f).trim())
-    .filter((f) => f.length > 20 && !HEDGE.test(f))
-    .slice(0, MAX_FINDINGS);
+    .map((f) => (typeof f === "string" ? { defect: f, where: "", evidence: "" } : (f as { defect?: string; where?: string; evidence?: string })))
+    .map((f) => ({ defect: String(f.defect ?? "").trim(), where: String(f.where ?? "").trim(), evidence: String(f.evidence ?? "").trim() }))
+    .filter((f) => {
+      if (f.defect.length <= 20 || HEDGE.test(f.defect)) return false;
+      // A factual claim the dossier does not support is the failure mode that
+      // made this pass 7% precise. Drop it rather than charge a repair round.
+      if (!evidenceHolds(f.evidence, dossier)) {
+        dropped.push(f.defect.slice(0, 90));
+        return false;
+      }
+      return true;
+    })
+    .slice(0, MAX_FINDINGS)
+    .map((f) => `${f.defect}${f.where ? ` [${f.where}]` : ""}`);
+  if (dropped.length) {
+    console.warn(`[reviewer] dropped ${dropped.length} uncited finding(s): ${dropped.join(" | ")}`);
+  }
   return {
     verdict: input.verdict === "issues" && findings.length ? "issues" : "pass",
     findings: input.verdict === "issues" ? findings : [],

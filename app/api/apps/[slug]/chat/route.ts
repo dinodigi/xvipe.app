@@ -30,12 +30,14 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ slug: s
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: string }> }) {
   const { slug } = await ctx.params;
-  const { message, model, effort } = (await req.json().catch(() => ({}))) as {
+  const { message, model, effort, runPlan } = (await req.json().catch(() => ({}))) as {
     message?: string;
     model?: string;
     effort?: string;
+    /** run the app's already-approved plan instead of handling a new message */
+    runPlan?: boolean;
   };
-  if (!message?.trim()) {
+  if (!runPlan && !message?.trim()) {
     return Response.json({ error: "message required" }, { status: 400 });
   }
   if (running.has(slug)) {
@@ -59,7 +61,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        for await (const event of runBuilder(slug, message.trim(), abort.signal)) {
+        for await (const event of runBuilder(slug, message?.trim() ?? "", abort.signal, { runPlan: Boolean(runPlan) })) {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
         }
       } catch (e) {

@@ -14,8 +14,17 @@
 import { callTool, listTools } from "@/lib/pluggie/mcp";
 import { DELIVERY_BASE } from "@/lib/pluggie/delivery";
 import { syncDeliveryToken } from "@/lib/deploy/kv";
-import { convergenceWait, createBuildContext, verifyAppFile, type BuildContext } from "@/lib/agent/verify";
+import {
+  collectionDrift,
+  collectionOf,
+  convergenceWait,
+  createBuildContext,
+  deadScheduleWarning,
+  verifyAppFile,
+  type BuildContext,
+} from "@/lib/agent/verify";
 import { teardownBackend } from "@/lib/agent/teardown";
+import { newBacklogItem } from "@/lib/agent/backlog";
 import { isTranspilable, transpileAppFile } from "@/lib/agent/transpile";
 import { THEMES, getTheme } from "@/lib/themes";
 import { applyTheme } from "@/lib/themes/apply";
@@ -30,6 +39,8 @@ const readVendoredPreact = (): string =>
   (vendoredPreact ??= readFileSync(join(process.cwd(), "lib", "vendor", "preact.js"), "utf8"));
 import {
   getApp,
+  loadPlanState,
+  savePlanState,
   saveGenerated,
   setDeliveryToken,
   getDeliveryToken,
@@ -217,6 +228,49 @@ const WORKSPACE_TOOLS: AnthropicTool[] = [
     },
   },
   {
+    name: "propose_plan",
+    description:
+      "Propose the ordered list of tasks that will build what the user asked for, then STOP. This is the only action of a planning turn — you hold read-only tools until the user approves, so nothing you propose is built yet. 3–12 tasks. Each is one coherent unit of work with an observable done-when, and the order must respect reality: collection shape before seeding, seeding before the UI that reads it, data wiring before polish. Anything worth doing that you are deliberately leaving out goes to add_to_backlog — never drop it silently.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tasks: {
+          type: "array",
+          description: "3–12 tasks, in execution order",
+          items: {
+            type: "object",
+            properties: {
+              title: {
+                type: "string",
+                description: 'imperative and specific, e.g. "Define support_requests with public intake + staff triage rules"',
+              },
+              doneWhen: {
+                type: "string",
+                description:
+                  'the observable condition that proves it, e.g. "probe_app returns rows on /api/v1/support_requests carrying all six fields"',
+              },
+            },
+            required: ["title", "doneWhen"],
+          },
+        },
+      },
+      required: ["tasks"],
+    },
+  },
+  {
+    name: "add_to_backlog",
+    description:
+      "Record something worth doing that is deliberately NOT in the plan you are about to propose — a follow-up, a known gap, a nice-to-have the user did not ask for. This is how scope stays honest: named and deferred beats silently dropped or silently built.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        why: { type: "string", description: "one line — why it matters and why it is not in this plan" },
+      },
+      required: ["title", "why"],
+    },
+  },
+  {
     name: "set_app_meta",
     description: "Set the app's display name and/or one-line description (shown in the studio chrome).",
     input_schema: {
@@ -281,12 +335,23 @@ const BUILD_RESIDENT = new Set([
  */
 const TOOL_SEARCH = { type: "tool_search_tool_regex_20251119", name: "tool_search_tool_regex" };
 
-export type ToolScope = "question" | "edit" | "build";
+/**
+ * Planning is deliberately read-only plus the two plan verbs. The agent gets
+ * enough to orient — collections, files, plugins, connectors, schedules — and
+ * literally cannot build anything before the user has seen the plan.
+ */
+const PLAN_TOOLS = new Set([
+  ...QUESTION_TOOLS,
+  "list_plugins", "get_plugin", "list_connectors", "list_schedules", "list_field_types",
+  "propose_plan", "add_to_backlog",
+]);
+
+export type ToolScope = "question" | "edit" | "build" | "plan";
 
 /** Narrow a session's tools to the turn's scope. */
 export function scopeTools(tools: AnthropicTool[], scope: ToolScope): AnthropicTool[] {
   if (scope !== "build") {
-    const keep = scope === "question" ? QUESTION_TOOLS : EDIT_TOOLS;
+    const keep = scope === "question" ? QUESTION_TOOLS : scope === "plan" ? PLAN_TOOLS : EDIT_TOOLS;
     return tools.filter((t) => keep.has(t.name));
   }
   // Build: everything stays available, but only the everyday set is loaded.
@@ -387,9 +452,6 @@ async function landAppFile(
     filesChanged: changed,
   };
 }
-
-/** The collection a delivery path reads, e.g. "/api/v1/tasks?x=1" → "tasks". */
-const collectionOf = (p: string): string => p.replace(/^\/api\/v1\//, "").split(/[?/#]/)[0] ?? "";
 
 /** Row-level writes — they take the same ~15s to show up on the delivery API. */
 const ROW_WRITES = new Set([
@@ -564,6 +626,53 @@ export async function dispatchTool(
         filesChanged: [applied.file],
       };
     }
+    if (name === "propose_plan") {
+      const raw = Array.isArray(input.tasks) ? input.tasks : [];
+      const tasks = raw
+        .map((t) => t as { title?: unknown; doneWhen?: unknown })
+        .map((t) => ({ title: String(t.title ?? "").trim(), doneWhen: String(t.doneWhen ?? "").trim() }))
+        .filter((t) => t.title);
+      if (!tasks.length) {
+        return {
+          result: { error: "tasks must be a non-empty array of { title, doneWhen } objects." },
+          isError: true,
+          summary: "propose_plan: no tasks",
+        };
+      }
+      if (tasks.length > 12) {
+        return {
+          result: { error: `${tasks.length} tasks is too many — a plan the user cannot read in one glance is not a plan. Merge related work into at most 12.` },
+          isError: true,
+          summary: `propose_plan: ${tasks.length} tasks (max 12)`,
+        };
+      }
+      const missing = tasks.filter((t) => !t.doneWhen).length;
+      if (missing) {
+        return {
+          result: { error: `${missing} task(s) have no doneWhen. Every task needs an observable finish condition — it is what the task is checked against before it can be called done.` },
+          isError: true,
+          summary: "propose_plan: missing doneWhen",
+        };
+      }
+      return {
+        result: {
+          ok: true,
+          tasks,
+          note: "Plan captured and shown to the user. STOP HERE — do not begin building. Execution starts only once they approve it.",
+        },
+        isError: false,
+        summary: `planned ${tasks.length} task(s)`,
+      };
+    }
+    if (name === "add_to_backlog") {
+      const title = String(input.title ?? "").trim();
+      if (!title) return { result: { error: "title is required" }, isError: true, summary: "add_to_backlog: no title" };
+      const state = loadPlanState(slug);
+      const item = newBacklogItem(title, String(input.why ?? "").trim());
+      state.backlog.push(item);
+      savePlanState(slug, state);
+      return { result: { ok: true, id: item.id }, isError: false, summary: `backlog + ${preview(item.title, 60)}` };
+    }
     if (name === "set_app_meta") {
       const app = updateApp(slug, {
         ...(input.name ? { name: String(input.name) } : {}),
@@ -601,6 +710,25 @@ export async function dispatchTool(
           isError: true,
           summary: "define_collection: fields arrived as a string, not an array",
         };
+      }
+      // Full-replace means an omitted workflow or access rule is a SILENT
+      // deletion. Removing a constraint to make its error go away is the most
+      // expensive habit available here — it converts a loud failure into a
+      // quiet one. Same shape as Pluggie's own confirm gate for field removal.
+      if (Array.isArray(input.fields) && !input.confirm) {
+        const drift = await collectionDrift(String(input.name), input, mcpToken);
+        if (drift) {
+          return {
+            result: {
+              error: `This would REMOVE ${drift.lost.join(" and ")} from ${input.name}. define_collection is full-replace, so anything you leave out is deleted — describe_collection, merge your change into the whole shape, and re-send it.`,
+              wouldRemove: drift.lost,
+              ...(drift.dependents.length ? { breaks: drift.dependents } : {}),
+              ifIntended: "Re-send with confirm:true, and tell the user what stopped working and why.",
+            },
+            isError: true,
+            summary: `define_collection would drop ${drift.lost.join(" + ")} — blocked`,
+          };
+        }
       }
     }
 
@@ -662,6 +790,20 @@ export async function dispatchTool(
       bctx.converging.set(String(input.name), Date.now());
     } else if (ROW_WRITES.has(name) && typeof input.collection === "string") {
       bctx.converging.set(input.collection, Date.now());
+    }
+    // A transition schedule against a collection that no longer has a workflow
+    // runs every night and matches nothing. Say so at the moment it becomes
+    // true, rather than leaving it to be discovered weeks later — or never.
+    if (name === "define_collection" || name === "define_schedule") {
+      const target = String(input.name ?? input.collection ?? "");
+      const dead = target ? await deadScheduleWarning(target, mcpToken) : undefined;
+      if (dead) {
+        return {
+          result: { ...(result as object), warning: dead },
+          isError: true,
+          summary: `${summarize(name, input, result)} · dead schedule`,
+        };
+      }
     }
     return { result, isError: false, summary: summarize(name, input, result) };
   } catch (e) {
