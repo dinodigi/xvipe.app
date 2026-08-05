@@ -331,7 +331,7 @@ async function* agentTurn(
       input: (use.input ?? {}) as Record<string, unknown>,
       label: toolLabel(use.name, (use.input ?? {}) as Record<string, unknown>),
     }));
-    for (const c of calls) yield { type: "tool_start", name: c.use.name, label: c.label };
+    for (const c of calls) yield { type: "tool_start", id: c.use.id, name: c.use.name, label: c.label };
 
     const outcomes = await Promise.all(
       calls.map((c) => dispatchTool(slug, mcpToken, c.use.name, c.input, buildCtx)),
@@ -352,7 +352,7 @@ async function* agentTurn(
       if (!outcome.isError && c.use.name === "propose_plan") {
         proposedTasks = (outcome.result as { tasks?: { title: string; doneWhen: string }[] }).tasks;
       }
-      yield { type: "tool_done", name: c.use.name, label: c.label, ok: !outcome.isError, summary: outcome.summary };
+      yield { type: "tool_done", id: c.use.id, name: c.use.name, label: c.label, ok: !outcome.isError, summary: outcome.summary };
 
       let body = typeof outcome.result === "string" ? outcome.result : JSON.stringify(outcome.result);
       if (outcome.isError) {

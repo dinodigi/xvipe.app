@@ -16,7 +16,7 @@ import { DEFAULT_EFFORT, EFFORTS, EFFORT_BLURB, isEffort, type Effort } from "@/
 
 type Item =
   | { kind: "text"; text: string }
-  | { kind: "step"; name: string; label: string; state: "wait" | "ok" | "fail"; summary?: string }
+  | { kind: "step"; id?: string; name: string; label: string; state: "wait" | "ok" | "fail"; summary?: string }
   /** end-of-turn receipt: what this build actually cost */
   | { kind: "checkpoint"; usage: TurnUsage }
   /** a proposed plan, awaiting the user's approval — nothing built yet */
@@ -373,11 +373,16 @@ export function Studio(props: {
             else cur.items.push({ kind: "text", text: ev.text });
           } else if (ev.type === "tool_start") {
             dropReasoning();
-            cur.items.push({ kind: "step", name: ev.name, label: ev.label, state: "wait" });
+            cur.items.push({ kind: "step", id: ev.id, name: ev.name, label: ev.label, state: "wait" });
           } else if (ev.type === "tool_done") {
+            // Match on the tool_use id when we have one. Matching by name alone
+            // mispaired results whenever a round ran several calls to the same
+            // tool concurrently — which is the common case for reads/writes.
             for (let i = cur.items.length - 1; i >= 0; i--) {
               const it = cur.items[i];
-              if (it.kind === "step" && it.state === "wait" && it.name === ev.name) {
+              if (it.kind !== "step" || it.state !== "wait") continue;
+              const hit = ev.id && it.id ? it.id === ev.id : it.name === ev.name;
+              if (hit) {
                 cur.items[i] = { ...it, state: ev.ok ? "ok" : "fail", summary: ev.summary };
                 break;
               }

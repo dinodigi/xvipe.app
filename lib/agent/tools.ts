@@ -843,15 +843,29 @@ function probeSummary(path: string, status: number, parsed: unknown, rawText: st
     return rec;
   };
   const out: Record<string, unknown> = { path, status };
-  const arr = Array.isArray(parsed)
-    ? parsed
-    : parsed && typeof parsed === "object"
-      ? (["items", "entries", "data", "results"]
-          .map((k) => (parsed as Record<string, unknown>)[k])
-          .find(Array.isArray) as unknown[] | undefined)
-      : undefined;
+  let envelope: string | undefined;
+  let arr: unknown[] | undefined;
+  if (Array.isArray(parsed)) {
+    arr = parsed;
+  } else if (parsed && typeof parsed === "object") {
+    for (const k of ["items", "entries", "data", "results"]) {
+      const v = (parsed as Record<string, unknown>)[k];
+      if (Array.isArray(v)) {
+        arr = v;
+        envelope = k;
+        break;
+      }
+    }
+  }
   if (arr) {
     out.count = arr.length;
+    // The shape the CLIENT must destructure. A 200 with the right fields still
+    // breaks the app if the code does `rows.map(...)` on a wrapper object —
+    // that exact mismatch shipped a queue app where every probe said "healthy"
+    // and the admin dashboard crashed on load. State it, don't imply it.
+    out.responseShape = envelope
+      ? `{"${envelope}":[…]} — a WRAPPER OBJECT, not a bare array. Client code must read res.${envelope} before mapping/filtering/.length. Treating this response as an array is a crash (.map is not a function) or a silent undefined.`
+      : "a bare JSON array — map/filter it directly.";
     const fields = arr.length ? Object.keys(flatten(arr[0])).filter((k) => flatten(arr[0])[k] !== undefined) : [];
     out.fields = fields.slice(0, 24);
     if (arr.length) out.sample = JSON.stringify(arr[0]).slice(0, 300);

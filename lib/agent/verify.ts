@@ -120,17 +120,15 @@ const hasKeys = (v: unknown): boolean => Boolean(v && typeof v === "object" && O
 const hasTransitions = (wf: unknown): boolean =>
   Boolean(wf && typeof wf === "object" && Array.isArray((wf as { transitions?: unknown[] }).transitions) && (wf as { transitions: unknown[] }).transitions.length);
 
-/** Schedules whose action is a workflow transition on `collection`. */
-async function transitionSchedules(collection: string, mcpToken: string): Promise<string[]> {
+/** Schedules whose action is a workflow transition on `collection`, with the state they aim at. */
+async function transitionSchedules(collection: string, mcpToken: string): Promise<{ name: string; to: string }[]> {
   try {
     const raw = await callTool<unknown>("list_schedules", {}, mcpToken);
     const all = Array.isArray(raw) ? raw : ((raw as Record<string, unknown>)?.schedules as unknown[]) ?? [];
     return all
-      .filter((s) => {
-        const json = JSON.stringify(s);
-        return json.includes(`"${collection}"`) && /"transition"\s*:/.test(json);
-      })
-      .map((s) => String((s as { name?: string; id?: string }).name ?? (s as { id?: string }).id ?? "unnamed"));
+      .map((s) => s as { name?: string; id?: string; action?: { collection?: string; transition?: { to?: string } } })
+      .filter((s) => s.action?.collection === collection && typeof s.action?.transition?.to === "string")
+      .map((s) => ({ name: String(s.name ?? s.id ?? "unnamed"), to: String(s.action!.transition!.to) }));
   } catch {
     return [];
   }
@@ -171,7 +169,7 @@ export async function collectionDrift(
     const states = (prev.workflow as { transitions?: { from?: string; to?: string }[] }).transitions ?? [];
     lost.push(`the workflow (${states.length} transition${states.length === 1 ? "" : "s"})`);
     for (const s of await transitionSchedules(name, mcpToken)) {
-      dependents.push(`schedule "${s}" performs a workflow transition on ${name} and would silently stop matching`);
+      dependents.push(`schedule "${s.name}" transitions ${name} to "${s.to}" and would silently stop matching`);
     }
   }
   if (hasKeys(prev.access) && !hasKeys(next.access)) {
@@ -181,9 +179,17 @@ export async function collectionDrift(
 }
 
 /**
- * A schedule whose action is a transition, on a collection that has no
- * workflow, is dead code that fails silently every night. Checked after a
- * schema change rather than before, because that is when it becomes true.
+ * A scheduled transition that cannot fire is dead code that fails quietly for
+ * as long as nobody looks. Two ways to get there, and a real build produced
+ * the second within an hour of the first shipping:
+ *
+ *   - the collection has no workflow at all (a constraint got removed), or
+ *   - the workflow exists but has no route to the state the schedule aims at
+ *     (queue_tickets: a nightly `archive_completed_tickets` targeting
+ *     "archived", where the status enum stops at completed/absent).
+ *
+ * Checked after a schema change rather than before, because that is the moment
+ * it becomes true.
  */
 export async function deadScheduleWarning(name: string, mcpToken: string): Promise<string | undefined> {
   const schedules = await transitionSchedules(name, mcpToken);
@@ -191,8 +197,29 @@ export async function deadScheduleWarning(name: string, mcpToken: string): Promi
   try {
     const raw = await callTool<Record<string, unknown>>("describe_collection", { name }, mcpToken);
     const c = ((raw.collection as Record<string, unknown>) ?? raw) as Record<string, unknown>;
-    if (hasTransitions(c.workflow)) return undefined;
-    return `DEAD SCHEDULE: ${schedules.map((s) => `"${s}"`).join(", ")} perform${schedules.length === 1 ? "s" : ""} a workflow transition on ${name}, which now has no workflow. ${schedules.length === 1 ? "It" : "They"} will run every night and match nothing. Restore the workflow or delete the schedule — do not leave it silently failing.`;
+    const wf = c.workflow as { field?: string; transitions?: { to?: string }[] } | undefined;
+
+    if (!hasTransitions(wf)) {
+      return `DEAD SCHEDULE: ${schedules.map((s) => `"${s.name}"`).join(", ")} transition${schedules.length === 1 ? "s" : ""} ${name}, which now has no workflow. ${schedules.length === 1 ? "It" : "They"} will run on schedule and match nothing. Restore the workflow or delete the schedule — do not leave it silently failing.`;
+    }
+
+    // Reachable = some transition ends there. Also check the enum, since a
+    // state that is not a legal field value can never be written at all.
+    const reachable = new Set((wf!.transitions ?? []).map((t) => String(t.to)));
+    const stateField = (Array.isArray(c.fields) ? (c.fields as Record<string, unknown>[]) : []).find(
+      (f) => f.name === (wf!.field ?? "status"),
+    );
+    const legal = Array.isArray(stateField?.options) ? (stateField!.options as unknown[]).map(String) : undefined;
+
+    const broken = schedules.filter((s) => !reachable.has(s.to) || (legal && !legal.includes(s.to)));
+    if (!broken.length) return undefined;
+    return `DEAD SCHEDULE: ${broken
+      .map((s) => `"${s.name}" transitions ${name} to "${s.to}"`)
+      .join("; ")} — but "${broken[0].to}" is ${
+      legal && !legal.includes(broken[0].to)
+        ? `not one of the ${wf!.field ?? "status"} field's options (${legal.join(", ")})`
+        : `not reachable: no workflow transition ends there (reachable: ${[...reachable].join(", ")})`
+    }. This schedule runs and matches nothing, every time. Add the state and a transition into it, or delete the schedule.`;
   } catch {
     return undefined;
   }
